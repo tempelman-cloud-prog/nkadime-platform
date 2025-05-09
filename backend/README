@@ -1,0 +1,42 @@
+# Nkadime Backend
+
+This is the backend service for the Nkadime platform, built with Node.js, Express, and TypeScript. It provides RESTful APIs for the web and mobile applications, handles authentication, business logic, and integrates with MongoDB.
+
+## Setup Instructions
+
+1. **Install dependencies:**
+   ```
+   npm install
+   ```
+
+2. **Environment variables:**
+   - Create a `.env` file in the `backend` directory with the following variables:
+     ```
+     MONGODB_URI=<your-mongodb-connection-string>
+     JWT_SECRET=<your-jwt-secret>
+     PORT=5000
+     ```
+
+3. **Run the server:**
+   ```
+   npm start
+   ```
+   The server will start on the port specified in your `.env` file (default: 5000).
+
+4. **Run tests:**
+   ```
+   npm test
+   ```
+
+## API Documentation
+
+See [API.md](API.md) for available endpoints and usage.
+
+## Project Structure
+- `src/` - Source code (controllers, models, routes, middleware)
+- `uploads/` - Uploaded files (e.g., images)
+
+## Notes
+- Requires MongoDB to be running (local or cloud).
+- For development, you can use tools like [Postman](https://www.postman.com/) to test API endpoints.
+

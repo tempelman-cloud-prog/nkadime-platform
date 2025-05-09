@@ -1,0 +1,60 @@
+# Node
+node_modules/
+.env
+uploads/
+build/
+dist/
+coverage/
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs/
+*.log
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+*.tgz
+
+# React
+public/static/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+ai/.env
+
+# Mobile
+mobile/node_modules/
+mobile/dist/
+mobile/build/
+
+# Backend
+backend/node_modules/
+backend/dist/
+backend/build/
+backend/uploads/
+
+# Web
+web/node_modules/
+web/dist/
+web/build/
+web/uploads/

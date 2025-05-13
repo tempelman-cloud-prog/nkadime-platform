@@ -9,7 +9,7 @@ import Button from "@mui/material/Button";
 import Rating from "@mui/material/Rating";
 import EditIcon from "@mui/icons-material/Edit";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import { getListings, getReviews, updateUser } from "./api";
+import { getListings, getReviews, updateUser, updateRentalStatus, getUserReviews, getUserAverageRating } from "./api";
 import jwt_decode from "jwt-decode";
 import TextField from "@mui/material/TextField";
 import IconButton from "@mui/material/IconButton";
@@ -60,13 +60,19 @@ const Profile: React.FC = () => {
   const [editMode, setEditMode] = useState(false);
   const [profilePic, setProfilePic] = useState<string | undefined>(undefined);
   const [location, setLocation] = useState<string>("");
+  const [bio, setBio] = useState<string>("");
   const [tempName, setTempName] = useState("");
   const [tempLocation, setTempLocation] = useState("");
   const [tempProfilePic, setTempProfilePic] = useState<string | undefined>(undefined);
+  const [tempBio, setTempBio] = useState("");
   const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [mapPosition, setMapPosition] = useState<[number, number] | null>(null);
+  const [rentalHistory, setRentalHistory] = useState<any[]>([]);
+  const [userReviews, setUserReviews] = useState<Review[]>([]);
+  const [userAvgRating, setUserAvgRating] = useState<number | null>(null);
+  const [userRatingCount, setUserRatingCount] = useState<number>(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -91,15 +97,18 @@ const Profile: React.FC = () => {
         const userData = await userRes.json();
         setLocation(userData.location || "");
         setProfilePic(userData.profilePic || undefined);
+        setBio(userData.bio || "");
         const allListings = await getListings();
-        setListings(allListings.filter((l: Listing) => l.owner === uid));
-        // Get all reviews for listings owned by this user
-        let allReviews: Review[] = [];
-        for (const listing of allListings.filter((l: Listing) => l.owner === uid)) {
-          const revs = await getReviews(listing._id);
-          allReviews = allReviews.concat(revs.filter((r: Review) => r.reviewer === uid));
-        }
-        setReviews(allReviews);
+        setListings((allListings.listings || []).filter((l: Listing) => l.owner === uid));
+        // Fetch user reviews and average rating
+        const userRevs = await getUserReviews(uid);
+        setUserReviews(userRevs);
+        const avgData = await getUserAverageRating(uid);
+        setUserAvgRating(avgData.avg);
+        setUserRatingCount(avgData.count);
+        // Fetch rental history
+        const rentals = await import('./api').then(api => api.getRentalHistory(uid));
+        setRentalHistory(rentals);
         setLoading(false);
       };
       fetchData();
@@ -120,6 +129,7 @@ const Profile: React.FC = () => {
     setTempName(name);
     setTempLocation(location);
     setTempProfilePic(profilePic);
+    setTempBio(bio);
     setEditMode(true);
     setSaveMessage(""); // Clear any previous save message
   };
@@ -129,6 +139,7 @@ const Profile: React.FC = () => {
     setTempName(name);
     setTempLocation(location);
     setTempProfilePic(profilePic);
+    setTempBio(bio);
     setProfilePicFile(null);
     setSaveMessage(""); // Clear any previous save message
   };
@@ -141,12 +152,14 @@ const Profile: React.FC = () => {
         name: tempName,
         location: tempLocation,
         profilePic: profilePicFile,
+        bio: tempBio,
       });
       setSaving(false);
       if (result && !result.error) {
         setName(result.name);
         setLocation(result.location);
         setProfilePic(result.profilePic);
+        setBio(result.bio || "");
         setEditMode(false);
         setProfilePicFile(null);
         setSaveMessage("Profile updated successfully!");
@@ -173,6 +186,15 @@ const Profile: React.FC = () => {
 
   const handleAddListing = () => {
     navigate("/create-listing");
+  };
+
+  const handleRentalStatus = async (rentalId: string, status: string) => {
+    const result = await updateRentalStatus(rentalId, status);
+    if (result && !result.error) {
+      setRentalHistory(rentalHistory.map(r => r._id === rentalId ? result : r));
+    } else {
+      alert(result.error || 'Failed to update rental status');
+    }
   };
 
   // Helper for marker icon (Leaflet default icon fix)
@@ -210,6 +232,14 @@ const Profile: React.FC = () => {
 
   return (
     <Box maxWidth={900} mx="auto" mt={4}>
+      {/* Banner/Cover Image */}
+      <Box sx={{ width: '100%', height: 180, mb: -7, borderRadius: 3, overflow: 'hidden', boxShadow: 2 }}>
+        <img
+          src={process.env.PUBLIC_URL + '/images/home items.png'}
+          alt="Profile Banner"
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      </Box>
       {/* Welcoming message */}
       <Box mb={2}>
         <Typography variant="h5" fontWeight={600} color="#FF9800">
@@ -220,21 +250,21 @@ const Profile: React.FC = () => {
       <Box
         sx={{
           background: "linear-gradient(90deg, #FF9800 0%, #FFB74D 100%)",
-          borderRadius: 3,
-          p: 4,
-          mb: 4,
+          borderRadius: 4,
+          p: 5,
+          mb: 5,
           color: "#fff",
           display: "flex",
           alignItems: "center",
-          gap: 3,
-          boxShadow: 3,
+          gap: 4,
+          boxShadow: 4,
           flexWrap: 'wrap',
         }}
       >
         <Box position="relative" mr={3} mb={{ xs: 2, md: 0 }}>
           <Avatar
             src={editMode ? tempProfilePic : profilePic}
-            sx={{ width: 90, height: 90, fontSize: 40, bgcolor: "#fff", color: "#FF9800" }}
+            sx={{ width: 110, height: 110, fontSize: 48, bgcolor: "#fff", color: "#FF9800", boxShadow: 2, border: '3px solid #fff' }}
           >
             {name ? name.charAt(0).toUpperCase() : email.charAt(0).toUpperCase()}
           </Avatar>
@@ -243,67 +273,93 @@ const Profile: React.FC = () => {
               color="primary"
               aria-label="upload picture"
               component="label"
-              sx={{ position: "absolute", bottom: 0, right: 0, bgcolor: "#fff" }}
+              sx={{ position: "absolute", bottom: 0, right: 0, bgcolor: "#fff", boxShadow: 1 }}
             >
               <input hidden accept="image/*" type="file" onChange={handleProfilePicChange} />
               <PhotoCamera />
             </IconButton>
           )}
         </Box>
-        <Box flex={1} minWidth={220}>
-          <Grid container spacing={1} alignItems="center">
+        <Box flex={1} minWidth={240}>
+          <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} md={8}>
               {editMode ? (
                 <TextField
                   label="Name"
                   value={tempName}
                   onChange={e => setTempName(e.target.value)}
-                  size="small"
+                  size="medium"
                   fullWidth
-                  sx={{ mb: 1, bgcolor: "#fff", borderRadius: 1 }}
+                  sx={{ mb: 2, bgcolor: "#fff", borderRadius: 2 }}
                 />
               ) : (
-                <Typography variant="h4" fontWeight={700} color="#fff">
+                <Typography variant="h4" fontWeight={800} color="#fff">
                   {name || "User"}
                 </Typography>
               )}
-              <Typography variant="subtitle1" color="#fff" sx={{ opacity: 0.9 }}>
+              <Typography variant="subtitle1" color="#fff" sx={{ opacity: 0.92 }}>
                 {email}
               </Typography>
+              {/* Show user average rating and review count */}
+              {userAvgRating !== null && (
+                <Box mt={2}>
+                  <Typography variant="h6" color="#fff">Avg. User Rating</Typography>
+                  <Rating value={Number(userAvgRating)} precision={0.1} readOnly sx={{ color: "#fff" }} />
+                  <Typography variant="body2" color="#fff">{userAvgRating.toFixed(1)} / 5 ({userRatingCount} review{userRatingCount === 1 ? '' : 's'})</Typography>
+                </Box>
+              )}
               {editMode ? (
                 <TextField
                   label="Location"
                   value={tempLocation}
                   onChange={e => setTempLocation(e.target.value)}
-                  size="small"
+                  size="medium"
                   fullWidth
-                  sx={{ mt: 1, bgcolor: "#fff", borderRadius: 1 }}
+                  sx={{ mt: 2, bgcolor: "#fff", borderRadius: 2 }}
                 />
               ) : (
                 location && (
-                  <Typography variant="body2" color="#fff" sx={{ opacity: 0.8, mt: 1 }}>
+                  <Typography variant="body2" color="#fff" sx={{ opacity: 0.85, mt: 2 }}>
                     <b>Location:</b> {location}
                   </Typography>
                 )
               )}
+              {editMode ? (
+                <TextField
+                  label="Bio"
+                  value={tempBio}
+                  onChange={e => setTempBio(e.target.value)}
+                  size="medium"
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  sx={{ mt: 2, bgcolor: "#fff", borderRadius: 2 }}
+                />
+              ) : (
+                bio && (
+                  <Typography variant="body2" color="#fff" sx={{ opacity: 0.92, mt: 2 }}>
+                    {bio}
+                  </Typography>
+                )
+              )}
               {joinDate && !editMode && (
-                <Typography variant="body2" color="#fff" sx={{ opacity: 0.8, mt: 1 }}>
+                <Typography variant="body2" color="#fff" sx={{ opacity: 0.85, mt: 2 }}>
                   <b>Joined:</b> {joinDate}
                 </Typography>
               )}
               {saveMessage && (
-                <Typography variant="body2" color="#fff" sx={{ mt: 1 }}>
+                <Typography variant="body2" color="#fff" sx={{ mt: 2 }}>
                   {saveMessage}
                 </Typography>
               )}
-              <Box mt={2} display="flex" gap={2}>
+              <Box mt={3} display="flex" gap={2}>
                 {editMode ? (
                   <>
                     <Button
                       variant="contained"
                       color="primary"
                       startIcon={<SaveIcon />}
-                      sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 700 }}
+                      sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
                       onClick={handleSave}
                       disabled={saving}
                     >
@@ -313,7 +369,7 @@ const Profile: React.FC = () => {
                       variant="contained"
                       color="secondary"
                       startIcon={<CancelIcon />}
-                      sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 700 }}
+                      sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
                       onClick={handleCancel}
                       disabled={saving}
                     >
@@ -325,7 +381,7 @@ const Profile: React.FC = () => {
                     variant="contained"
                     color="secondary"
                     startIcon={<EditIcon />}
-                    sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 700 }}
+                    sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
                     onClick={handleEdit}
                   >
                     Edit Profile
@@ -335,7 +391,7 @@ const Profile: React.FC = () => {
                   variant="contained"
                   color="primary"
                   startIcon={<AddCircleOutlineIcon />}
-                  sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 700 }}
+                  sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
                   onClick={handleAddListing}
                   disabled={editMode}
                 >
@@ -345,9 +401,9 @@ const Profile: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={4} sx={{ textAlign: "center" }}>
               <Typography variant="h6" color="#fff">Listings</Typography>
-              <Typography variant="h4" fontWeight={700} color="#fff">{listings.length}</Typography>
+              <Typography variant="h4" fontWeight={800} color="#fff">{listings.length}</Typography>
               <Typography variant="h6" color="#fff" mt={2}>Reviews</Typography>
-              <Typography variant="h4" fontWeight={700} color="#fff">{reviews.length}</Typography>
+              <Typography variant="h4" fontWeight={800} color="#fff">{reviews.length}</Typography>
               {avgRating && (
                 <Box mt={2}>
                   <Typography variant="h6" color="#fff">Avg. Rating</Typography>
@@ -368,6 +424,70 @@ const Profile: React.FC = () => {
           {/* ...existing code for reviews... */}
         </Grid>
       </Grid>
+      {/* Rental History Section */}
+      <Box mt={6}>
+        <Typography variant="h6" fontWeight={700} color="#FF9800" mb={2}>
+          Rental History
+        </Typography>
+        {rentalHistory && rentalHistory.length > 0 ? (
+          <Box sx={{ background: '#fff', borderRadius: 3, p: 3, boxShadow: 1 }}>
+            {rentalHistory.map((rental, idx) => {
+              const isOwner = rental.owner && rental.owner._id === userId;
+              const isRenter = rental.renter && rental.renter._id === userId;
+              const completed = rental.status === 'completed';
+              // Check if user has already reviewed the other party for this rental
+              let hasLeftReview = false;
+              if (completed) {
+                if (isOwner) {
+                  hasLeftReview = userReviews.some(r => r.rental === rental._id && r.reviewer === userId && r.reviewedUser === rental.renter._id);
+                } else if (isRenter) {
+                  hasLeftReview = userReviews.some(r => r.rental === rental._id && r.reviewer === userId && r.reviewedUser === rental.owner._id);
+                }
+              }
+              return (
+                <Box key={rental._id || idx} mb={2} p={2} sx={{ borderBottom: idx !== rentalHistory.length - 1 ? '1px solid #eee' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={600} color="#FF9800">
+                      {rental.listing?.title || 'Listing'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {rental.status.charAt(0).toUpperCase() + rental.status.slice(1)} | {new Date(rental.startDate).toLocaleDateString()} - {new Date(rental.endDate).toLocaleDateString()}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {isOwner ? 'You are the owner' : 'You rented this'}
+                    </Typography>
+                    {/* Review prompt for completed rentals */}
+                    {completed && !hasLeftReview && (
+                      <Box mt={1} sx={{ background: '#FFF8E1', borderRadius: 2, p: 2, boxShadow: 1 }}>
+                        <Typography variant="body2" color="#FF9800" fontWeight={700}>
+                          {isOwner ? 'Leave a review for your renter' : 'Leave a review for the owner'}
+                        </Typography>
+                        {/* You can add a modal or inline form here for review submission */}
+                        <Button variant="contained" color="warning" size="small" sx={{ mt: 1, fontWeight: 700, borderRadius: 2 }}>
+                          Leave Review
+                        </Button>
+                      </Box>
+                    )}
+                  </Box>
+                  {/* Show approve/decline buttons if user is owner and rental is pending */}
+                  {isOwner && rental.status === 'pending' && (
+                    <Box display="flex" gap={1}>
+                      <Button variant="contained" color="success" size="small" sx={{ fontWeight: 700, borderRadius: 2 }} onClick={() => handleRentalStatus(rental._id, 'approved')}>Approve</Button>
+                      <Button variant="contained" color="error" size="small" sx={{ fontWeight: 700, borderRadius: 2 }} onClick={() => handleRentalStatus(rental._id, 'declined')}>Decline</Button>
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        ) : (
+          <Box sx={{ background: '#fff', borderRadius: 3, p: 3, boxShadow: 1, minHeight: 80 }}>
+            <Typography variant="body2" color="text.secondary">
+              No rental history yet. When you rent equipment, your past rentals will appear here.
+            </Typography>
+          </Box>
+        )}
+      </Box>
       {editMode && (
         <Box mt={2} mb={2}>
           <Typography variant="body2" color="#fff" sx={{ mb: 1 }}>
@@ -387,6 +507,24 @@ const Profile: React.FC = () => {
           )}
         </Box>
       )}
+      {/* User Reviews Section */}
+      <Box mt={6}>
+        <Typography variant="h6" fontWeight={700} color="#FF9800" mb={2}>
+          User Reviews
+        </Typography>
+        {userReviews.length === 0 && <Typography color="text.secondary">No user reviews yet.</Typography>}
+        <ul style={{ padding: 0, listStyle: 'none', width: '100%' }}>
+          {userReviews.map(r => (
+            <li key={r._id} style={{ background: '#f7f7f7', borderRadius: 10, marginBottom: 12, padding: '1em 1em 0.7em 1em', boxShadow: '0 1px 6px #455a6411' }}>
+              <b style={{ color: '#FF9800' }}>Rating:</b> {r.rating} &nbsp;|&nbsp; <b style={{ color: '#607D8B' }}>Comment:</b> {r.comment}
+              <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>
+                By: {typeof r.reviewer === 'object' && r.reviewer !== null && 'name' in r.reviewer ? (r.reviewer as any).name : r.reviewer}
+              </div>
+              <div style={{ color: '#888', fontSize: 12 }}>{new Date(r.createdAt).toLocaleString()}</div>
+            </li>
+          ))}
+        </ul>
+      </Box>
     </Box>
   );
 };

@@ -5,7 +5,9 @@ import {
   createListing, getListings,
   addFavorite, getFavorites,
   addReview, getReviews,
-  createNotification, getNotifications
+  createNotification, getNotifications,
+  getRentalHistory, createRentalRequest, updateRentalStatus,
+  getAverageRating
 } from './models/controllers';
 import multer from 'multer';
 import path from 'path';
@@ -60,11 +62,19 @@ router.post('/reviews', authenticateToken, upload.array('images', 5), (req, res,
   const multerReq = req as import('express').Request & { files: Express.Multer.File[] };
   addReview(multerReq, res).catch(next);
 });
-router.get('/reviews/:listingId', getReviews);
+router.get('/reviews/:listingId', getReviews); // for listing
+router.get('/user-reviews/:userId', getReviews); // for user
+router.get('/average-rating/listing/:listingId', getAverageRating);
+router.get('/average-rating/user/:userId', getAverageRating);
 
 // Notification routes (protected for creating)
 router.post('/notifications', authenticateToken, createNotification);
 router.get('/notifications/:userId', getNotifications);
+
+// Rental routes
+router.post('/rentals', authenticateToken, createRentalRequest);
+router.get('/rentals/history/:userId', authenticateToken, getRentalHistory);
+router.patch('/rentals/:rentalId/status', authenticateToken, updateRentalStatus);
 
 // ... Placeholders for admin, analytics, referral, dispute ...
 

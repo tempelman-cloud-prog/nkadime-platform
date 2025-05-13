@@ -33,8 +33,18 @@ const RegisterForm: React.FC = () => {
   }
 
   return (
-    <form className="modern-card" onSubmit={handleSubmit}>
-      <h2>Register</h2>
+    <form className="modern-card" onSubmit={handleSubmit} style={{
+      maxWidth: 420,
+      margin: '48px auto',
+      background: '#fff',
+      borderRadius: 16,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
+      padding: 32,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 18
+    }}>
+      <h2 style={{ textAlign: 'center', color: '#FF9800', fontWeight: 800, marginBottom: 18 }}>Register</h2>
       <input
         name="name"
         type="text"
@@ -42,6 +52,7 @@ const RegisterForm: React.FC = () => {
         value={form.name}
         onChange={handleChange}
         required
+        style={{ padding: 14, borderRadius: 12, border: '2px solid #e0e0e0', fontSize: 18, marginBottom: 8, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
       />
       <input
         name="email"
@@ -50,6 +61,7 @@ const RegisterForm: React.FC = () => {
         value={form.email}
         onChange={handleChange}
         required
+        style={{ padding: 14, borderRadius: 12, border: '2px solid #e0e0e0', fontSize: 18, marginBottom: 8, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
       />
       <input
         name="password"
@@ -58,6 +70,7 @@ const RegisterForm: React.FC = () => {
         value={form.password}
         onChange={handleChange}
         required
+        style={{ padding: 14, borderRadius: 12, border: '2px solid #e0e0e0', fontSize: 18, marginBottom: 8, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
       />
       <input
         name="phone"
@@ -65,46 +78,41 @@ const RegisterForm: React.FC = () => {
         placeholder="Phone (optional)"
         value={form.phone}
         onChange={handleChange}
+        style={{ padding: 14, borderRadius: 12, border: '2px solid #e0e0e0', fontSize: 18, marginBottom: 8, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
       />
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, marginTop: 4, width: '100%' }}>
-        <input
-          type="checkbox"
-          id="terms"
-          checked={agreed}
-          onChange={e => setAgreed(e.target.checked)}
-          style={{ marginRight: 8 }}
-        />
-        <label htmlFor="terms" style={{ fontSize: '0.97em', color: '#7B7F9E', cursor: 'pointer' }}>
-          I agree to the <button type="button" style={{ color: '#FF9800', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', fontSize: '1em', padding: 0 }} onClick={() => setShowTerms(v => !v)}>{showTerms ? 'Hide Terms' : 'Show Terms'}</button>
-        </label>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} required style={{ marginRight: 8 }} />
+        <span style={{ fontSize: 15 }}>I agree to the <a href="#" onClick={e => { e.preventDefault(); setShowTerms(true); }} style={{ color: '#FF9800', textDecoration: 'underline' }}>Terms</a></span>
       </div>
+      <button type="submit" disabled={!agreed} style={{
+        background: 'linear-gradient(90deg, #FF9800 0%, #FFB74D 100%)',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 10,
+        padding: '12px 30px',
+        fontWeight: 700,
+        fontSize: 19,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+        cursor: !agreed ? 'not-allowed' : 'pointer',
+        marginTop: 10,
+        transition: 'background 0.2s, box-shadow 0.2s',
+        letterSpacing: 0.5,
+      }}>Register</button>
+      <div style={{ minHeight: 24, color: message === 'Registration successful!' ? '#388E3C' : 'red', marginTop: 8, textAlign: 'center', fontSize: 15 }}>{message}</div>
+      {/* Terms modal (optional) */}
       {showTerms && (
-        <div style={{ background: '#f7f7f7', borderRadius: 8, padding: '1em', marginBottom: 12, color: '#22223B', fontSize: '0.97em', maxHeight: 180, overflowY: 'auto' }}>
-          <b>Terms of Service</b>
-          <ul style={{ margin: '0.5em 0 0 1.2em', padding: 0 }}>
-            <li>You agree to provide accurate information when registering and using the platform.</li>
-            <li>All equipment listed must be legal, safe, and owned or authorized for rental by you.</li>
-            <li>Payments and transactions are handled securely via Orange Money or approved methods.</li>
-            <li>Nkadime is not responsible for loss, theft, or damage to equipment during rentals.</li>
-            <li>Disputes will be handled according to our dispute resolution policy.</li>
-            <li>By registering, you agree to receive transactional emails and notifications.</li>
-            <li>Contact us for more terms of service.</li>
-          </ul>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: 32, maxWidth: 420, boxShadow: '0 4px 24px #0003' }}>
+            <h3 style={{ color: '#FF9800', fontWeight: 800, marginBottom: 16 }}>Terms & Conditions</h3>
+            <ul style={{ fontSize: 15, color: '#444', marginBottom: 18 }}>
+              <li>By registering, you agree to our platform's terms and privacy policy.</li>
+              <li>Payments and transactions are handled securely via Orange Money or approved methods.</li>
+              <li>All users must provide accurate information.</li>
+            </ul>
+            <button onClick={() => setShowTerms(false)} style={{ background: '#FF9800', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 24px', fontWeight: 700, fontSize: 16, marginTop: 8, cursor: 'pointer' }}>Close</button>
+          </div>
         </div>
       )}
-      <button
-        type="submit"
-        disabled={!agreed}
-        style={{
-          background: agreed ? '#FF9800' : '#e0e0e0',
-          color: agreed ? '#fff' : '#aaa',
-          cursor: agreed ? 'pointer' : 'not-allowed',
-          fontWeight: 700,
-        }}
-      >
-        Register
-      </button>
-      <div>{message}</div>
     </form>
   );
 };

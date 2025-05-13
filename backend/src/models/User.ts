@@ -10,6 +10,7 @@ export interface IUser extends Document {
   createdAt: Date;
   profilePic?: string;
   location?: string;
+  bio?: string; // Add bio to interface
 }
 
 const UserSchema: Schema = new Schema({
@@ -21,7 +22,8 @@ const UserSchema: Schema = new Schema({
   isAdmin: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   profilePic: { type: String },
-  location: { type: String }
+  location: { type: String },
+  bio: { type: String, default: '' } // Add bio to schema
 });
 
 const User = mongoose.model<IUser>('User', UserSchema);

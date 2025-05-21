@@ -160,7 +160,7 @@ const Home = () => {
 								fontWeight: 700,
 								fontSize: '1.1em',
 							}}
-							onClick={() => navigate('/login')}
+							onClick={() => isLoggedIn ? navigate('/create-listing') : navigate('/login')}
 						>
 							List Your Equipment
 						</button>

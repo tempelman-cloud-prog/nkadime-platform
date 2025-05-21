@@ -215,7 +215,7 @@ export async function getNotifications(userId: string) {
 
 export async function markNotificationsRead(userId: string) {
   const token = localStorage.getItem("token");
-  const res = await fetch(`http://localhost:5000/api/notifications/${userId}/read`, {
+  const res = await fetch(`http://localhost:5000/api/notifications/user/${userId}/read`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -232,5 +232,244 @@ export async function getUserReviews(userId: string) {
 
 export async function getUserAverageRating(userId: string) {
   const res = await fetch(`${API_BASE}/average-rating/user/${userId}`);
+  return res.json();
+}
+
+export async function updateListing(id: string, data: any) {
+  const token = localStorage.getItem("token");
+  let res;
+  if (data instanceof FormData) {
+    res = await fetch(`${API_BASE}/listings/${id}`, {
+      method: "PATCH",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+        // Do NOT set Content-Type for FormData; browser will set it
+      },
+      body: data,
+    });
+  } else {
+    res = await fetch(`${API_BASE}/listings/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(data),
+    });
+  }
+  return res.json();
+}
+
+export async function deleteListing(id: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/listings/${id}`, {
+    method: "DELETE",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Add new API functions for robust transaction features
+export async function addRentalMessage(rentalId: string, data: { message?: string; evidenceUrl?: string; userId: string }) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function addRentalPayment(rentalId: string, data: { amount: number; method: string; reference: string; paidAt?: string }) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/payment`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function addRentalReview(rentalId: string, data: { by: string; rating: number; comment: string }) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/review`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function exportRentalAudit(rentalId: string, format: 'pdf' | 'csv' | 'json' = 'json') {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/export?format=${format}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Failed to export rental audit' }));
+    throw new Error(error.error || 'Failed to export rental audit');
+  }
+  if (format === 'pdf' || format === 'csv') {
+    const blob = await res.blob();
+    return blob;
+  } else {
+    return res.json();
+  }
+}
+
+export async function updateRentalStatusWithAudit(rentalId: string, data: { status: string; note?: string; userId: string }) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/status-audit`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function sendListingMessage(listingId: string, message: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/listings/${listingId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ message }),
+  });
+  return res.json();
+}
+
+export async function getListingMessages(listingId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/listings/${listingId}/messages`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Raise a dispute on a rental
+export async function raiseDispute(rentalId: string, data: { reason: string; evidenceUrl?: string }) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/dispute`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+// Fetch rental requests made by the current user (as renter)
+export async function getMyRentalRequests() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/my-requests`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Fetch rental requests for listings owned by the current user (as owner)
+export async function getIncomingRentalRequests() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/incoming-requests`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Approve a rental request
+export async function approveRentalRequest(requestId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${requestId}/approve`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Decline a rental request
+export async function declineRentalRequest(requestId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${requestId}/decline`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+export async function getReceivedMessages() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/messages/received`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+export async function markMessagesRead(listingId: string, fromUserId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/messages/${listingId}/mark-read`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ fromUserId })
+  });
+  return res.json();
+}
+
+export async function sendMessageReply(listingId: string, toUserId: string, message: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/messages/${listingId}/reply`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ toUserId, message })
+  });
+  return res.json();
+}
+
+export async function getUserStats(userId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/users/${userId}/stats`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
   return res.json();
 }

@@ -9,16 +9,20 @@ import Button from "@mui/material/Button";
 import Rating from "@mui/material/Rating";
 import EditIcon from "@mui/icons-material/Edit";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import { getListings, getReviews, updateUser, updateRentalStatus, getUserReviews, getUserAverageRating } from "./api";
+import { getListings, updateUser, updateRentalStatus, getUserReviews, getUserAverageRating, deleteListing, getUserStats } from "./api";
 import jwt_decode from "jwt-decode";
 import TextField from "@mui/material/TextField";
 import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
 import PhotoCamera from "@mui/icons-material/PhotoCamera";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 
 interface JwtPayload {
   userId?: string;
@@ -46,13 +50,15 @@ interface Review {
   comment: string;
   createdAt: string;
   listing: string;
+  rental?: string; // Added for rental-based reviews
+  reviewedUser?: string; // Added for user-to-user reviews
 }
 
 const Profile: React.FC = () => {
+  const { userId: routeUserId } = useParams<{ userId?: string }>();
   const [userId, setUserId] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [listings, setListings] = useState<Listing[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [name, setName] = useState<string>("");
@@ -61,6 +67,7 @@ const Profile: React.FC = () => {
   const [profilePic, setProfilePic] = useState<string | undefined>(undefined);
   const [location, setLocation] = useState<string>("");
   const [bio, setBio] = useState<string>("");
+  const [userStats, setUserStats] = useState<any>(null);
   const [tempName, setTempName] = useState("");
   const [tempLocation, setTempLocation] = useState("");
   const [tempProfilePic, setTempProfilePic] = useState<string | undefined>(undefined);
@@ -73,55 +80,75 @@ const Profile: React.FC = () => {
   const [userReviews, setUserReviews] = useState<Review[]>([]);
   const [userAvgRating, setUserAvgRating] = useState<number | null>(null);
   const [userRatingCount, setUserRatingCount] = useState<number>(0);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [listingToDelete, setListingToDelete] = useState<Listing | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setError("You must be logged in to view your profile.");
-      setLoading(false);
-      return;
-    }
-    try {
-      const decoded = jwt_decode<JwtPayload & { name?: string; createdAt?: string }>(token);
-      const uid = decoded.userId || decoded.id || "";
-      setUserId(uid);
-      setEmail(decoded.email || "");
-      setName(decoded.name || "User");
-      if (decoded.createdAt) {
-        setJoinDate(new Date(decoded.createdAt).toLocaleDateString());
+    async function fetchProfile() {
+      setLoading(true);
+      let uid = routeUserId;
+      if (!uid) {
+        // fallback to logged-in user
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setError("You must be logged in to view your profile.");
+          setLoading(false);
+          return;
+        }
+        try {
+          const decoded = jwt_decode<JwtPayload & { name?: string; createdAt?: string }>(token);
+          uid = decoded.userId || decoded.id || "";
+          setEmail(decoded.email || "");
+          if (decoded.createdAt) {
+            setJoinDate(new Date(decoded.createdAt).toLocaleDateString());
+          }
+        } catch {
+          setError("Invalid token. Please log in again.");
+          setLoading(false);
+          return;
+        }
       }
+      setUserId(uid!);
       // Fetch user profile from backend for location and profilePic
-      const fetchData = async () => {
-        const userRes = await fetch(`http://localhost:5000/api/users/${uid}`);
-        const userData = await userRes.json();
-        setLocation(userData.location || "");
-        setProfilePic(userData.profilePic || undefined);
-        setBio(userData.bio || "");
-        const allListings = await getListings();
-        setListings((allListings.listings || []).filter((l: Listing) => l.owner === uid));
-        // Fetch user reviews and average rating
-        const userRevs = await getUserReviews(uid);
-        setUserReviews(userRevs);
-        const avgData = await getUserAverageRating(uid);
-        setUserAvgRating(avgData.avg);
-        setUserRatingCount(avgData.count);
-        // Fetch rental history
-        const rentals = await import('./api').then(api => api.getRentalHistory(uid));
-        setRentalHistory(rentals);
-        setLoading(false);
-      };
-      fetchData();
-    } catch (e) {
-      setError("Invalid token. Please log in again.");
+      const userRes = await fetch(`http://localhost:5000/api/users/${uid}`);
+      const userData = await userRes.json();
+      setName(userData.name || "User");
+      setLocation(userData.location || "");
+      setProfilePic(userData.profilePic || undefined);
+      setBio(userData.bio || "");
+      if (userData.createdAt) setJoinDate(new Date(userData.createdAt).toLocaleDateString());
+      // Fetch user stats
+      const stats = await getUserStats(uid!);
+      setUserStats(stats);
+      // Fetch all listings by this user
+      const listingsData = await getListings();
+      setListings((listingsData.listings || []).filter((l: any) => {
+        if (typeof l.owner === "string") {
+          return l.owner === uid;
+        } else if (l.owner && (l.owner as any)._id) {
+          return (l.owner as any)._id === uid;
+        }
+        return false;
+      }));
+      // Fetch user reviews and average rating
+      const userRevs = await getUserReviews(uid!);
+      setUserReviews(userRevs);
+      const avgData = await getUserAverageRating(uid!);
+      setUserAvgRating(avgData.avg);
+      setUserRatingCount(avgData.count);
+      // Fetch rental history
+      const rentals = await import('./api').then(api => api.getRentalHistory(uid!));
+      setRentalHistory(rentals);
       setLoading(false);
     }
-  }, []);
+    fetchProfile();
+  }, [routeUserId]);
 
   // Calculate average rating
-  const avgRating = reviews.length
+  const avgRating = userReviews.length
     ? (
-        reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        userReviews.reduce((sum, r) => sum + r.rating, 0) / userReviews.length
       ).toFixed(1)
     : null;
 
@@ -217,6 +244,17 @@ const Profile: React.FC = () => {
     return mapPosition ? <Marker position={mapPosition} /> : null;
   }
 
+  // Determine if this is the logged-in user's own profile
+  const token = localStorage.getItem("token");
+  let loggedInUserId = null;
+  if (token) {
+    try {
+      const decoded = jwt_decode<JwtPayload & { name?: string; createdAt?: string }>(token);
+      loggedInUserId = decoded.userId || decoded.id || null;
+    } catch {}
+  }
+  const isOwnProfile = loggedInUserId && userId && loggedInUserId === userId;
+
   if (loading)
     return (
       <Box display="flex" justifyContent="center" mt={4}>
@@ -240,283 +278,173 @@ const Profile: React.FC = () => {
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       </Box>
-      {/* Welcoming message */}
-      <Box mb={2}>
-        <Typography variant="h5" fontWeight={600} color="#FF9800">
-          Welcome back, {name || "User"}!
-        </Typography>
-      </Box>
-      {/* Profile Header */}
+      {/* Profile Header - orange for owner, navy for public */}
       <Box
         sx={{
-          background: "linear-gradient(90deg, #FF9800 0%, #FFB74D 100%)",
+          background: (!routeUserId || routeUserId === userId)
+            ? 'linear-gradient(90deg, #FF9800 0%, #FFB74D 100%)'
+            : 'linear-gradient(90deg, #0a2342 0%, #19335c 100%)',
           borderRadius: 4,
-          p: 5,
+          p: { xs: 3, md: 5 },
           mb: 5,
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
           gap: 4,
           boxShadow: 4,
           flexWrap: 'wrap',
+          flexDirection: { xs: 'column', md: 'row' },
         }}
       >
-        <Box position="relative" mr={3} mb={{ xs: 2, md: 0 }}>
+        <Box position="relative" display="flex" flexDirection="column" alignItems="center" mr={{ xs: 0, md: 3 }} mb={{ xs: 2, md: 0 }}>
           <Avatar
-            src={editMode ? tempProfilePic : profilePic}
-            sx={{ width: 110, height: 110, fontSize: 48, bgcolor: "#fff", color: "#FF9800", boxShadow: 2, border: '3px solid #fff' }}
+            src={
+              profilePic
+                ? profilePic.startsWith("http")
+                  ? profilePic
+                  : `${process.env.REACT_APP_API_URL || "http://localhost:5000"}/${profilePic.replace(/^\/+/,'')}`
+                : undefined
+            }
+            sx={{ width: 110, height: 110, fontSize: 48, bgcolor: "#fff", color: "#0a2342", boxShadow: 2, border: '3px solid #fff' }}
           >
             {name ? name.charAt(0).toUpperCase() : email.charAt(0).toUpperCase()}
           </Avatar>
-          {editMode && (
-            <IconButton
-              color="primary"
-              aria-label="upload picture"
-              component="label"
-              sx={{ position: "absolute", bottom: 0, right: 0, bgcolor: "#fff", boxShadow: 1 }}
+          {/* Edit Profile Button overlayed on avatar for owner */}
+          {isOwnProfile && !editMode && (
+            <Button
+              variant="contained"
+              startIcon={<EditIcon />}
+              onClick={handleEdit}
+              sx={{
+                position: 'absolute',
+                top: 0,
+                right: -18,
+                background: '#0a2342',
+                color: '#fff',
+                fontWeight: 700,
+                borderRadius: '50px',
+                minWidth: 0,
+                px: 2,
+                py: 0.5,
+                fontSize: 15,
+                boxShadow: 2,
+                zIndex: 2,
+                '&:hover': { background: '#19335c' },
+              }}
+              size="small"
             >
-              <input hidden accept="image/*" type="file" onChange={handleProfilePicChange} />
-              <PhotoCamera />
-            </IconButton>
+              Edit
+            </Button>
           )}
-        </Box>
-        <Box flex={1} minWidth={240}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={8}>
-              {editMode ? (
-                <TextField
-                  label="Name"
-                  value={tempName}
-                  onChange={e => setTempName(e.target.value)}
-                  size="medium"
-                  fullWidth
-                  sx={{ mb: 2, bgcolor: "#fff", borderRadius: 2 }}
-                />
-              ) : (
-                <Typography variant="h4" fontWeight={800} color="#fff">
-                  {name || "User"}
-                </Typography>
-              )}
-              <Typography variant="subtitle1" color="#fff" sx={{ opacity: 0.92 }}>
-                {email}
+          {/* User info under avatar */}
+          <Box mt={2} textAlign="center">
+            <Typography variant="h5" fontWeight={800} color="#fff" sx={{ mb: 0.5, letterSpacing: 0.5 }}>
+              {name || "User"}
+            </Typography>
+            {location && (
+              <Typography variant="body2" color="#fff" sx={{ opacity: 0.85, mb: 0.5 }}>
+                <b>Location:</b> {location}
               </Typography>
-              {/* Show user average rating and review count */}
-              {userAvgRating !== null && (
-                <Box mt={2}>
-                  <Typography variant="h6" color="#fff">Avg. User Rating</Typography>
-                  <Rating value={Number(userAvgRating)} precision={0.1} readOnly sx={{ color: "#fff" }} />
-                  <Typography variant="body2" color="#fff">{userAvgRating.toFixed(1)} / 5 ({userRatingCount} review{userRatingCount === 1 ? '' : 's'})</Typography>
-                </Box>
-              )}
-              {editMode ? (
-                <TextField
-                  label="Location"
-                  value={tempLocation}
-                  onChange={e => setTempLocation(e.target.value)}
-                  size="medium"
-                  fullWidth
-                  sx={{ mt: 2, bgcolor: "#fff", borderRadius: 2 }}
-                />
-              ) : (
-                location && (
-                  <Typography variant="body2" color="#fff" sx={{ opacity: 0.85, mt: 2 }}>
-                    <b>Location:</b> {location}
-                  </Typography>
-                )
-              )}
-              {editMode ? (
-                <TextField
-                  label="Bio"
-                  value={tempBio}
-                  onChange={e => setTempBio(e.target.value)}
-                  size="medium"
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  sx={{ mt: 2, bgcolor: "#fff", borderRadius: 2 }}
-                />
-              ) : (
-                bio && (
-                  <Typography variant="body2" color="#fff" sx={{ opacity: 0.92, mt: 2 }}>
-                    {bio}
-                  </Typography>
-                )
-              )}
-              {joinDate && !editMode && (
-                <Typography variant="body2" color="#fff" sx={{ opacity: 0.85, mt: 2 }}>
-                  <b>Joined:</b> {joinDate}
-                </Typography>
-              )}
-              {saveMessage && (
-                <Typography variant="body2" color="#fff" sx={{ mt: 2 }}>
-                  {saveMessage}
-                </Typography>
-              )}
-              <Box mt={3} display="flex" gap={2}>
-                {editMode ? (
-                  <>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<SaveIcon />}
-                      sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
-                      onClick={handleSave}
-                      disabled={saving}
-                    >
-                      {saving ? "Saving..." : "Save"}
-                    </Button>
-                    <Button
-                      variant="contained"
-                      color="secondary"
-                      startIcon={<CancelIcon />}
-                      sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
-                      onClick={handleCancel}
-                      disabled={saving}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
+            )}
+            {joinDate && (
+              <Typography variant="body2" color="#fff" sx={{ opacity: 0.85, mb: 0.5 }}>
+                <b>Joined:</b> {joinDate}
+              </Typography>
+            )}
+          </Box>
+        </Box>
+        {/* Rest of profile info (bio, stats, actions, etc.) */}
+        <Box flex={1} minWidth={240} display="flex" flexDirection="column" justifyContent="center">
+          {bio && (
+            <Typography variant="body2" color="#fff" sx={{ opacity: 0.92, mb: 1 }}>
+              {bio}
+            </Typography>
+          )}
+          {/* Stats for public view */}
+          {userStats && (
+            <Box
+              mt={2}
+              display="flex"
+              gap={2}
+              flexWrap="wrap"
+              flexDirection={{ xs: 'column', sm: 'row' }}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+            >
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
+                <Typography variant="subtitle2" color="#0a2342">Transactions</Typography>
+                <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats.successful ?? 0}</Typography>
+              </Box>
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
+                <Typography variant="subtitle2" color="#0a2342">Disputes</Typography>
+                <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats.disputes ?? 0}</Typography>
+              </Box>
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
+                <Typography variant="subtitle2" color="#0a2342">Avg. Rating</Typography>
+                <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats.avg ? userStats.avg.toFixed(1) : 'N/A'}</Typography>
+              </Box>
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
+                <Typography variant="subtitle2" color="#0a2342">Reviews</Typography>
+                <Typography variant="h6" fontWeight={800} color="#0a2342">{userRatingCount ?? 0}</Typography>
+              </Box>
+              {/* Add Listing button as a stat column for owner only */}
+              {isOwnProfile && !editMode && (
+                <Box sx={{ background: '#0a2342', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', mb: { xs: 1, sm: 0 } }}>
                   <Button
                     variant="contained"
-                    color="secondary"
-                    startIcon={<EditIcon />}
-                    sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
-                    onClick={handleEdit}
+                    startIcon={<AddCircleOutlineIcon />}
+                    sx={{ background: '#0a2342', color: '#fff', fontWeight: 700, borderRadius: 2, boxShadow: 2, '&:hover': { background: '#19335c' }, minWidth: 0, fontSize: 15, px: 1, py: 0.5 }}
+                    onClick={handleAddListing}
+                    size="small"
                   >
-                    Edit Profile
+                    Add Listing
                   </Button>
-                )}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddCircleOutlineIcon />}
-                  sx={{ bgcolor: "#fff", color: "#FF9800", fontWeight: 800, borderRadius: 2, boxShadow: 1 }}
-                  onClick={handleAddListing}
-                  disabled={editMode}
-                >
-                  Add Listing
-                </Button>
-              </Box>
-            </Grid>
-            <Grid item xs={12} md={4} sx={{ textAlign: "center" }}>
-              <Typography variant="h6" color="#fff">Listings</Typography>
-              <Typography variant="h4" fontWeight={800} color="#fff">{listings.length}</Typography>
-              <Typography variant="h6" color="#fff" mt={2}>Reviews</Typography>
-              <Typography variant="h4" fontWeight={800} color="#fff">{reviews.length}</Typography>
-              {avgRating && (
-                <Box mt={2}>
-                  <Typography variant="h6" color="#fff">Avg. Rating</Typography>
-                  <Rating value={Number(avgRating)} precision={0.1} readOnly sx={{ color: "#fff" }} />
-                  <Typography variant="body2" color="#fff">{avgRating} / 5</Typography>
                 </Box>
               )}
-            </Grid>
-          </Grid>
+            </Box>
+          )}
+          {/* Owner-only actions: show only for logged-in user viewing their own profile */}
+          {/* Removed Add Listing button from below stats row */}
         </Box>
       </Box>
-      {/* Listings and Reviews */}
-      <Grid container spacing={4}>
-        <Grid item xs={12} md={6}>
-          {/* ...existing code for listings... */}
-        </Grid>
-        <Grid item xs={12} md={6}>
-          {/* ...existing code for reviews... */}
-        </Grid>
-      </Grid>
-      {/* Rental History Section */}
-      <Box mt={6}>
-        <Typography variant="h6" fontWeight={700} color="#FF9800" mb={2}>
-          Rental History
-        </Typography>
-        {rentalHistory && rentalHistory.length > 0 ? (
-          <Box sx={{ background: '#fff', borderRadius: 3, p: 3, boxShadow: 1 }}>
-            {rentalHistory.map((rental, idx) => {
-              const isOwner = rental.owner && rental.owner._id === userId;
-              const isRenter = rental.renter && rental.renter._id === userId;
-              const completed = rental.status === 'completed';
-              // Check if user has already reviewed the other party for this rental
-              let hasLeftReview = false;
-              if (completed) {
-                if (isOwner) {
-                  hasLeftReview = userReviews.some(r => r.rental === rental._id && r.reviewer === userId && r.reviewedUser === rental.renter._id);
-                } else if (isRenter) {
-                  hasLeftReview = userReviews.some(r => r.rental === rental._id && r.reviewer === userId && r.reviewedUser === rental.owner._id);
-                }
-              }
-              return (
-                <Box key={rental._id || idx} mb={2} p={2} sx={{ borderBottom: idx !== rentalHistory.length - 1 ? '1px solid #eee' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight={600} color="#FF9800">
-                      {rental.listing?.title || 'Listing'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {rental.status.charAt(0).toUpperCase() + rental.status.slice(1)} | {new Date(rental.startDate).toLocaleDateString()} - {new Date(rental.endDate).toLocaleDateString()}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {isOwner ? 'You are the owner' : 'You rented this'}
-                    </Typography>
-                    {/* Review prompt for completed rentals */}
-                    {completed && !hasLeftReview && (
-                      <Box mt={1} sx={{ background: '#FFF8E1', borderRadius: 2, p: 2, boxShadow: 1 }}>
-                        <Typography variant="body2" color="#FF9800" fontWeight={700}>
-                          {isOwner ? 'Leave a review for your renter' : 'Leave a review for the owner'}
-                        </Typography>
-                        {/* You can add a modal or inline form here for review submission */}
-                        <Button variant="contained" color="warning" size="small" sx={{ mt: 1, fontWeight: 700, borderRadius: 2 }}>
-                          Leave Review
-                        </Button>
-                      </Box>
-                    )}
-                  </Box>
-                  {/* Show approve/decline buttons if user is owner and rental is pending */}
-                  {isOwner && rental.status === 'pending' && (
-                    <Box display="flex" gap={1}>
-                      <Button variant="contained" color="success" size="small" sx={{ fontWeight: 700, borderRadius: 2 }} onClick={() => handleRentalStatus(rental._id, 'approved')}>Approve</Button>
-                      <Button variant="contained" color="error" size="small" sx={{ fontWeight: 700, borderRadius: 2 }} onClick={() => handleRentalStatus(rental._id, 'declined')}>Decline</Button>
-                    </Box>
-                  )}
-                </Box>
-              );
-            })}
+      {/* Edit Profile Form (only for owner, in edit mode) */}
+      {editMode && (!routeUserId || routeUserId === userId) && (
+        <Box sx={{ background: '#fff', borderRadius: 3, p: 4, boxShadow: 2, mb: 4, mt: -4, maxWidth: 600, mx: 'auto' }}>
+          <Typography variant="h6" fontWeight={700} color="#0a2342" mb={2}>Edit Profile</Typography>
+          <Box component="form" onSubmit={e => { e.preventDefault(); handleSave(); }} display="flex" flexDirection="column" gap={2}>
+            <TextField label="Name" value={tempName} onChange={e => setTempName(e.target.value)} fullWidth required />
+            <TextField label="Location" value={tempLocation} onChange={e => setTempLocation(e.target.value)} fullWidth />
+            <TextField label="Bio" value={tempBio} onChange={e => setTempBio(e.target.value)} fullWidth multiline minRows={2} />
+            <Box display="flex" alignItems="center" gap={2}>
+              <Button variant="contained" component="label" startIcon={<PhotoCamera />} sx={{ background: '#FF9800', color: '#fff', fontWeight: 700, borderRadius: 2, '&:hover': { background: '#fb8c00' } }}>
+                Upload Picture
+                <input type="file" accept="image/*" hidden onChange={handleProfilePicChange} />
+              </Button>
+              {tempProfilePic && (
+                <Avatar src={typeof tempProfilePic === 'string' ? tempProfilePic : undefined} sx={{ width: 56, height: 56, ml: 2 }} />
+              )}
+            </Box>
+            <Box display="flex" gap={2} mt={2}>
+              <Button type="submit" variant="contained" startIcon={<SaveIcon />} sx={{ background: '#388E3C', color: '#fff', fontWeight: 700, borderRadius: 2, '&:hover': { background: '#2e7d32' } }} disabled={saving}>
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button variant="outlined" startIcon={<CancelIcon />} onClick={handleCancel} sx={{ color: '#0a2342', borderColor: '#0a2342', fontWeight: 700, borderRadius: 2 }}>
+                Cancel
+              </Button>
+            </Box>
+            {saveMessage && <Typography color={saveMessage.includes('success') ? 'green' : 'red'} mt={1}>{saveMessage}</Typography>}
           </Box>
-        ) : (
-          <Box sx={{ background: '#fff', borderRadius: 3, p: 3, boxShadow: 1, minHeight: 80 }}>
-            <Typography variant="body2" color="text.secondary">
-              No rental history yet. When you rent equipment, your past rentals will appear here.
-            </Typography>
-          </Box>
-        )}
-      </Box>
-      {editMode && (
-        <Box mt={2} mb={2}>
-          <Typography variant="body2" color="#fff" sx={{ mb: 1 }}>
-            Click on the map to set your location:
-          </Typography>
-          <MapContainer center={[-24.6282, 25.9231]} zoom={12} style={{ height: 250, width: '100%', borderRadius: 8 }}>
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution="&copy; OpenStreetMap contributors"
-            />
-            <LocationMarker />
-          </MapContainer>
-          {mapPosition && (
-            <Typography variant="body2" color="#fff" sx={{ mt: 1 }}>
-              Selected: {mapPosition[0].toFixed(5)}, {mapPosition[1].toFixed(5)}
-            </Typography>
-          )}
         </Box>
       )}
-      {/* User Reviews Section */}
-      <Box mt={6}>
-        <Typography variant="h6" fontWeight={700} color="#FF9800" mb={2}>
-          User Reviews
+      {/* Reviews Section */}
+      <Box mt={4}>
+        <Typography variant="h6" fontWeight={700} color="#0a2342" mb={2}>
+          {name ? `${name}'s Reviews` : 'User Reviews'}
         </Typography>
         {userReviews.length === 0 && <Typography color="text.secondary">No user reviews yet.</Typography>}
         <ul style={{ padding: 0, listStyle: 'none', width: '100%' }}>
           {userReviews.map(r => (
-            <li key={r._id} style={{ background: '#f7f7f7', borderRadius: 10, marginBottom: 12, padding: '1em 1em 0.7em 1em', boxShadow: '0 1px 6px #455a6411' }}>
-              <b style={{ color: '#FF9800' }}>Rating:</b> {r.rating} &nbsp;|&nbsp; <b style={{ color: '#607D8B' }}>Comment:</b> {r.comment}
+            <li key={r._id} style={{ background: '#f7f7f7', borderRadius: 10, marginBottom: 12, padding: '1em 1em 0.7em 1em', boxShadow: '0 1px 6px #0a234211' }}>
+              <b style={{ color: '#0a2342' }}>Rating:</b> {r.rating} &nbsp;|&nbsp; <b style={{ color: '#607D8B' }}>Comment:</b> {r.comment}
               <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>
                 By: {typeof r.reviewer === 'object' && r.reviewer !== null && 'name' in r.reviewer ? (r.reviewer as any).name : r.reviewer}
               </div>
@@ -525,6 +453,87 @@ const Profile: React.FC = () => {
           ))}
         </ul>
       </Box>
+      {/* User Listings Section */}
+      <Box mt={4}>
+        <Typography variant="h6" fontWeight={700} color="#0a2342" mb={2}>
+          {name ? `${name}'s Listings` : "User's Listings"}
+        </Typography>
+        {listings.length === 0 ? (
+          <Box sx={{ background: '#fff', borderRadius: 3, p: 3 }}>
+            <Typography variant="body2" color="text.secondary">
+              {routeUserId ? "This user has not created any listings yet." : "You have not created any listings yet."}
+            </Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            {listings.map(listing => (
+              <Grid item xs={12} sm={6} md={4} key={listing._id}>
+                <Box sx={{ background: '#fff', borderRadius: 3, p: 2, boxShadow: 1, minHeight: 180, position: 'relative' }}>
+                  <Box sx={{ width: '100%', height: 120, mb: 1, borderRadius: 2, overflow: 'hidden', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <img
+                      src={
+                        listing.images && listing.images.length > 0
+                          ? (listing.images[0].startsWith("http")
+                              ? listing.images[0]
+                              : `${process.env.REACT_APP_API_URL || "http://localhost:5000"}/${listing.images[0].replace(/^\/+/,'')}`
+                            )
+                          : process.env.PUBLIC_URL + '/images/home items.png'
+                      }
+                      alt={listing.title}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </Box>
+                  <Typography variant="subtitle1" fontWeight={700} color="#0a2342">{listing.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">{listing.category}</Typography>
+                  <Typography variant="body2" color="text.secondary">{listing.price} {listing.priceUnit ? `/ ${listing.priceUnit}` : ''}</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    {listing.available ? 'Available' : 'Not Available'}
+                  </Typography>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Listing</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete the listing <b>{listingToDelete?.title}</b>? This action cannot be undone.
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} color="primary">Cancel</Button>
+          <Button
+            onClick={async () => {
+              if (!listingToDelete) return;
+              try {
+                const res = await deleteListing(listingToDelete._id);
+                if (!res.error) {
+                  const allListings = await getListings();
+                  setListings((allListings.listings || []).filter((l: any) => {
+                    if (typeof l.owner === "string") {
+                      return l.owner === userId;
+                    } else if (l.owner && (l.owner)._id) {
+                      return l.owner._id === userId;
+                    }
+                    return false;
+                  }));
+                  setDeleteDialogOpen(false);
+                  setListingToDelete(null);
+                  // Optionally show a snackbar or message here
+                } else {
+                  alert(res.error || 'Failed to delete listing');
+                }
+              } catch (err) {
+                alert('Network or server error. Please try again.');
+              }
+            }}
+            color="error"
+            variant="contained"
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

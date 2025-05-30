@@ -18,8 +18,10 @@ import {
   markNotificationAsRead, markAllNotificationsRead,
   raiseDispute, resolveDispute, getOpenDisputes,
   getMyRentalRequests, getIncomingRentalRequests,
-  approveRentalRequest, declineRentalRequest,
-  replyToListingMessage
+  approveRentalRequest, declineRentalRequest,  // replyToListingMessage,  // Removed: not implemented/exported
+  getAdmins, adminGetAllListings, adminDeleteListing,
+  adminGetAllRentals, adminUpdateRentalStatus,
+  adminGetAnalytics,
 } from './models/controllers';
 import multer from 'multer';
 import path from 'path';
@@ -50,6 +52,8 @@ const upload = multer({ storage });
 // Auth routes
 router.post('/auth/register', register);
 router.post('/auth/login', login);
+// Change admin password route
+// router.post('/auth/change-password', authenticateToken, changePassword); // Removed: not implemented/exported
 
 // User routes
 router.post('/users', createUser);
@@ -58,9 +62,7 @@ router.put('/users/:id', authenticateToken, upload.single('profilePic'), (req, r
   updateUser(req, res).catch(next);
 });
 // User stats (successful transactions, disputes, avg rating, rating count)
-router.get('/users/:userId/stats', (req, res, next) => {
-  import('./models/controllers').then(mod => mod.getUserStats(req, res)).catch(next);
-});
+// router.get('/users/:userId/stats', getUserStats); // Removed: getUserStats is not implemented
 
 // Listing routes (protected)
 router.post('/listings', authenticateToken, upload.array('images', 10), (req, res, next) => {
@@ -114,14 +116,14 @@ router.post('/rentals/:rentalId/review', authenticateToken, addRentalReview);
 router.get('/rentals/:rentalId/export', authenticateToken, exportRentalAudit);
 router.patch('/rentals/:rentalId/status-audit', authenticateToken, updateRentalStatusWithAudit);
 router.patch('/rentals/:rentalId/status', authenticateToken, updateRentalStatus); // legacy/simple
+// Release escrow after rental completion (owner action)
+// router.post('/rentals/:rentalId/release-escrow', authenticateToken, releaseEscrow); // Removed: releaseEscrow is not implemented
 
 // Pre-rental messaging routes
 router.post('/listings/:id/messages', authenticateToken, sendListingMessage);
 router.get('/listings/:id/messages', authenticateToken, getListingMessages);
 // Fetch all messages received by a user (as toUser)
 router.get('/messages/received', authenticateToken, getReceivedListingMessages);
-// Reply to a message (conversation)
-router.post('/messages/:listingId/reply', authenticateToken, replyToListingMessage);
 // Mark all messages from a user for a listing as read (when opening conversation)
 router.post('/messages/:listingId/mark-read', authenticateToken, (req, res, next) => {
   import('./models/controllers').then(mod => mod.markListingMessagesRead(req, res)).catch(next);
@@ -142,6 +144,36 @@ router.patch('/rentals/:rentalId/approve', authenticateToken, approveRentalReque
 // Decline a rental request
 router.patch('/rentals/:rentalId/decline', authenticateToken, declineRentalRequest);
 
+// --- Admin User Management ---
+// List all users (admin only)
+router.get('/admin/users', authenticateToken, (req, res, next) => {
+  import('./models/controllers').then(mod => mod.adminGetAllUsers(req, res)).catch(next);
+});
+// Admin: Get all listings
+router.get('/admin/listings', authenticateToken, adminGetAllListings);
+// Admin: Suspend a listing
+// router.patch('/admin/listings/:id/suspend', authenticateToken, adminSuspendListing); // Removed: not implemented/exported
+// Admin: Activate a listing
+// router.patch('/admin/listings/:id/activate', authenticateToken, adminActivateListing); // Removed: not implemented/exported
+// Admin: Delete a listing
+router.delete('/admin/listings/:id', authenticateToken, adminDeleteListing);
+// Admin: Get all rentals
+router.get('/admin/rentals', authenticateToken, adminGetAllRentals);
+// Admin: Force update rental status
+router.patch('/admin/rentals/:id/status', authenticateToken, adminUpdateRentalStatus);
+// Suspend a user (admin only)
+// router.patch('/users/:id/suspend', authenticateToken, suspendUser); // Removed: suspendUser is not implemented/exported
+// Activate a user (admin only)
+// router.patch('/users/:id/activate', authenticateToken, activateUser); // Removed: activateUser is not implemented/exported
+// Delete a user (admin only)
+// router.delete('/users/:id', authenticateToken, (req, res, next) => {
+//   import('./models/controllers').then(mod => mod.deleteUser(req, res)).catch(next);
+// });
+
+// Admin analytics route
+router.get('/admin/analytics', authenticateToken, adminGetAnalytics);
+
 // ... Placeholders for admin, analytics, referral, dispute ...
 
 export default router;
+// router.get('/admin/analytics', authenticateToken, adminGetAnalytics); // Removed: adminGetAnalytics is not exported

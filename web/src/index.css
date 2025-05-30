@@ -13,3 +13,9 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+.highlight-rental-row {
+  background: #FFFDE7 !important;
+  box-shadow: 0 0 0 2px #FF9800;
+  transition: background 0.5s, box-shadow 0.5s;
+}

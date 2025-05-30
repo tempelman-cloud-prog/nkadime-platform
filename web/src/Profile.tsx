@@ -6,23 +6,19 @@ import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import Rating from "@mui/material/Rating";
-import EditIcon from "@mui/icons-material/Edit";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import { getListings, updateUser, updateRentalStatus, getUserReviews, getUserAverageRating, deleteListing, getUserStats } from "./api";
+import { getListings, updateUser, updateRentalStatus, getUserReviews, getUserAverageRating, deleteListing } from "./api";
 import jwt_decode from "jwt-decode";
 import TextField from "@mui/material/TextField";
-import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
 import PhotoCamera from "@mui/icons-material/PhotoCamera";
-import { useNavigate, useParams } from "react-router-dom";
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+import EditIcon from "@mui/icons-material/Edit";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+import { useNavigate, useParams } from "react-router-dom";
 
 interface JwtPayload {
   userId?: string;
@@ -67,7 +63,7 @@ const Profile: React.FC = () => {
   const [profilePic, setProfilePic] = useState<string | undefined>(undefined);
   const [location, setLocation] = useState<string>("");
   const [bio, setBio] = useState<string>("");
-  const [userStats, setUserStats] = useState<any>(null);
+  const [userStats] = useState<any>(null);
   const [tempName, setTempName] = useState("");
   const [tempLocation, setTempLocation] = useState("");
   const [tempProfilePic, setTempProfilePic] = useState<string | undefined>(undefined);
@@ -118,9 +114,6 @@ const Profile: React.FC = () => {
       setProfilePic(userData.profilePic || undefined);
       setBio(userData.bio || "");
       if (userData.createdAt) setJoinDate(new Date(userData.createdAt).toLocaleDateString());
-      // Fetch user stats
-      const stats = await getUserStats(uid!);
-      setUserStats(stats);
       // Fetch all listings by this user
       const listingsData = await getListings();
       setListings((listingsData.listings || []).filter((l: any) => {
@@ -144,13 +137,6 @@ const Profile: React.FC = () => {
     }
     fetchProfile();
   }, [routeUserId]);
-
-  // Calculate average rating
-  const avgRating = userReviews.length
-    ? (
-        userReviews.reduce((sum, r) => sum + r.rating, 0) / userReviews.length
-      ).toFixed(1)
-    : null;
 
   const handleEdit = () => {
     setTempName(name);
@@ -214,35 +200,6 @@ const Profile: React.FC = () => {
   const handleAddListing = () => {
     navigate("/create-listing");
   };
-
-  const handleRentalStatus = async (rentalId: string, status: string) => {
-    const result = await updateRentalStatus(rentalId, status);
-    if (result && !result.error) {
-      setRentalHistory(rentalHistory.map(r => r._id === rentalId ? result : r));
-    } else {
-      alert(result.error || 'Failed to update rental status');
-    }
-  };
-
-  // Helper for marker icon (Leaflet default icon fix)
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
-    iconUrl: require('leaflet/dist/images/marker-icon.png'),
-    shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-  });
-
-  // TODO: Run `npm i --save-dev @types/leaflet` to fix missing types for 'leaflet'.
-
-  function LocationMarker() {
-    useMapEvents({
-      click(e: L.LeafletMouseEvent) { // Added type for 'e'
-        setMapPosition([e.latlng.lat, e.latlng.lng]);
-        setTempLocation(`${e.latlng.lat},${e.latlng.lng}`);
-      },
-    });
-    return mapPosition ? <Marker position={mapPosition} /> : null;
-  }
 
   // Determine if this is the logged-in user's own profile
   const token = localStorage.getItem("token");
@@ -360,48 +317,63 @@ const Profile: React.FC = () => {
               {bio}
             </Typography>
           )}
-          {/* Stats for public view */}
-          {userStats && (
-            <Box
-              mt={2}
-              display="flex"
-              gap={2}
-              flexWrap="wrap"
-              flexDirection={{ xs: 'column', sm: 'row' }}
-              alignItems={{ xs: 'stretch', sm: 'center' }}
-            >
-              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
+          {/* Stats for public view - always show, use fallback values if userStats is missing */}
+          <Box
+            mt={2}
+            display="flex"
+            gap={2}
+            flexWrap="wrap"
+            flexDirection={{ xs: 'column', sm: 'row' }}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+          >
+            {/* Stats Row */}
+            <Box display="flex" flexDirection={{ xs: 'column', sm: 'row' }} gap={2} mb={3}>
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
                 <Typography variant="subtitle2" color="#0a2342">Transactions</Typography>
-                <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats.successful ?? 0}</Typography>
+                <Button variant="text" color="primary" sx={{ fontWeight: 800, fontSize: 18, p: 0, minWidth: 0 }} onClick={() => navigate(`/profile/${routeUserId || userId}/transactions`)}>
+                  <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats?.successful ?? 0}</Typography>
+                </Button>
               </Box>
-              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
                 <Typography variant="subtitle2" color="#0a2342">Disputes</Typography>
-                <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats.disputes ?? 0}</Typography>
+                <Button variant="text" color="primary" sx={{ fontWeight: 800, fontSize: 18, p: 0, minWidth: 0 }} onClick={() => navigate(`/profile/${routeUserId || userId}/disputes`)}>
+                  <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats?.disputes ?? 0}</Typography>
+                </Button>
               </Box>
-              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
-                <Typography variant="subtitle2" color="#0a2342">Avg. Rating</Typography>
-                <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats.avg ? userStats.avg.toFixed(1) : 'N/A'}</Typography>
-              </Box>
-              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, mb: { xs: 1, sm: 0 } }}>
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
                 <Typography variant="subtitle2" color="#0a2342">Reviews</Typography>
-                <Typography variant="h6" fontWeight={800} color="#0a2342">{userRatingCount ?? 0}</Typography>
+                <Button variant="text" color="primary" sx={{ fontWeight: 800, fontSize: 18, p: 0, minWidth: 0 }} onClick={() => navigate(`/profile/${routeUserId || userId}/reviews`)}>
+                  <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats?.reviews ?? userRatingCount ?? 0}</Typography>
+                </Button>
               </Box>
-              {/* Add Listing button as a stat column for owner only */}
-              {isOwnProfile && !editMode && (
-                <Box sx={{ background: '#0a2342', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', mb: { xs: 1, sm: 0 } }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<AddCircleOutlineIcon />}
-                    sx={{ background: '#0a2342', color: '#fff', fontWeight: 700, borderRadius: 2, boxShadow: 2, '&:hover': { background: '#19335c' }, minWidth: 0, fontSize: 15, px: 1, py: 0.5 }}
-                    onClick={handleAddListing}
-                    size="small"
-                  >
-                    Add Listing
-                  </Button>
-                </Box>
-              )}
+              <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
+                <Typography variant="subtitle2" color="#0a2342">Avg. Rating</Typography>
+                <Typography variant="h6" fontWeight={800} color="#0a2342">{userAvgRating !== null ? userAvgRating.toFixed(1) : 'N/A'}</Typography>
+              </Box>
             </Box>
-          )}
+            {/* Add Listing button as a stat column for owner only */}
+            {isOwnProfile && !editMode && (
+              <Box sx={{ background: '#0a2342', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1, mb: { xs: 1, sm: 0 } }}>
+                <Button
+                  variant="contained"
+                  startIcon={<AddCircleOutlineIcon />}
+                  sx={{ background: '#0a2342', color: '#fff', fontWeight: 700, borderRadius: 2, boxShadow: 2, '&:hover': { background: '#19335c' }, minWidth: 0, fontSize: 15, px: 1, py: 0.5 }}
+                  onClick={handleAddListing}
+                  size="small"
+                >
+                  Add Listing
+                </Button>
+                <Button
+                  variant="contained"
+                  sx={{ background: '#FF9800', color: '#fff', fontWeight: 700, borderRadius: 2, boxShadow: 2, '&:hover': { background: '#ffa726' }, minWidth: 0, fontSize: 15, px: 1.5, py: 0.5, ml: 1 }}
+                  onClick={() => navigate('/listings')}
+                  size="small"
+                >
+                  View Equipment
+                </Button>
+              </Box>
+            )}
+          </Box>
           {/* Owner-only actions: show only for logged-in user viewing their own profile */}
           {/* Removed Add Listing button from below stats row */}
         </Box>

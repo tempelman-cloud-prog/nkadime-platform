@@ -1,15 +1,86 @@
-import React, { useEffect, useState } from "react";
-import { getMyRentalRequests, getIncomingRentalRequests, approveRentalRequest, declineRentalRequest } from "./api";
+import React, { useEffect, useState, useRef } from "react";
+import { getMyRentalRequests, getIncomingRentalRequests, approveRentalRequest, declineRentalRequest, addRentalPayment, releaseEscrow, raiseDispute, exportRentalAudit } from "./api";
 import { Link } from "react-router-dom";
 import Alert from '@mui/material/Alert';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import TextField from '@mui/material/TextField';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import DescriptionIcon from '@mui/icons-material/Description';
+import GavelIcon from '@mui/icons-material/Gavel';
+import PaidIcon from '@mui/icons-material/Paid';
+import DoneAllIcon from '@mui/icons-material/DoneAll';
+import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
+import Tooltip from '@mui/material/Tooltip';
+import InputAdornment from '@mui/material/InputAdornment';
+import IconButton from '@mui/material/IconButton';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import Box from '@mui/material/Box';
+import Snackbar from '@mui/material/Snackbar';
+import CircularProgress from '@mui/material/CircularProgress';
+import Button from '@mui/material/Button';
+import Grow from '@mui/material/Grow';
+import Chip from '@mui/material/Chip';
+import Avatar from '@mui/material/Avatar';
+import LinearProgress from '@mui/material/LinearProgress';
+import Stepper from '@mui/material/Stepper';
+import Step from '@mui/material/Step';
+import StepLabel from '@mui/material/StepLabel';
+import SearchIcon from '@mui/icons-material/Search';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
+import NoDataSvg from './NoDataSvg'; // You may need to create or replace with a suitable SVG/illustration
 
+// Add helper to get current userId from JWT
+function getCurrentUserId() {
+  const token = localStorage.getItem('token');
+  if (!token) return '';
+  try {
+    const decoded = JSON.parse(atob(token.split('.')[1]));
+    return decoded.userId || decoded.id || '';
+  } catch {
+    return '';
+  }
+}
+
+// Corrected RentalRequest interface to include all used properties
 interface RentalRequest {
   _id: string;
-  listing: any;
-  renter: any;
-  owner: any;
-  status: 'pending' | 'approved' | 'declined';
+  listing: {
+    _id: string;
+    title: string;
+    price?: number;
+    [key: string]: any;
+  };
+  renter: {
+    _id: string;
+    email?: string;
+    name?: string;
+    [key: string]: any;
+  };
+  owner: {
+    _id: string;
+    email?: string;
+    name?: string;
+  };
+  status: 'pending' | 'approved' | 'declined' | 'paid' | 'active' | 'in-progress' | 'completed' | 'cancelled';
+  payment?: {
+    amount: number;
+    method: string;
+    reference: string;
+    paidAt: string;
+  };
+  dispute?: {
+    status: string;
+    reason?: string;
+    evidenceUrl?: string;
+  };
   createdAt: string;
+  [key: string]: any;
 }
 
 const MyRentals: React.FC = () => {
@@ -18,6 +89,41 @@ const MyRentals: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const [escrowDialogOpen, setEscrowDialogOpen] = useState(false);
+  const [escrowRental, setEscrowRental] = useState<RentalRequest | null>(null);
+  const [escrowAmount, setEscrowAmount] = useState("");
+  const [escrowMethod, setEscrowMethod] = useState("");
+  const [escrowReference, setEscrowReference] = useState("");
+  const [escrowError, setEscrowError] = useState("");
+  const [escrowLoading, setEscrowLoading] = useState(false);
+
+  // Add state for escrow release
+  const [releaseLoading, setReleaseLoading] = useState<string | null>(null);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+  const [confirmRelease, setConfirmRelease] = useState<string | null>(null);
+
+  // Dispute modal state
+  const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
+  const [disputeRental, setDisputeRental] = useState<RentalRequest | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeEvidence, setDisputeEvidence] = useState("");
+  const [disputeFile, setDisputeFile] = useState<File | null>(null);
+  const [disputeFileUrl, setDisputeFileUrl] = useState<string>("");
+  const [disputeError, setDisputeError] = useState("");
+  const [disputeLoading, setDisputeLoading] = useState(false);
+
+  // Export/printable summary state
+  const [exportLoading, setExportLoading] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
+  const [confirmEscrow, setConfirmEscrow] = useState(false);
+  const [confirmDispute, setConfirmDispute] = useState(false);
+
+  const escrowDialogRef = useRef<HTMLDivElement>(null);
+  const disputeDialogRef = useRef<HTMLDivElement>(null);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -61,85 +167,656 @@ const MyRentals: React.FC = () => {
     }
   };
 
+  const handleOpenEscrowDialog = (rental: RentalRequest) => {
+    setEscrowRental(rental);
+    setEscrowAmount(rental.listing.price ? String(rental.listing.price) : "");
+    setEscrowMethod("");
+    setEscrowReference("");
+    setEscrowError("");
+    setEscrowDialogOpen(true);
+  };
+  const handleCloseEscrowDialog = () => {
+    setEscrowDialogOpen(false);
+    setEscrowRental(null);
+    setEscrowError("");
+  };
+  const handleEscrowPayment = async () => {
+    if (!escrowRental) return;
+    if (!escrowAmount || !escrowMethod || !escrowReference) {
+      setEscrowError("All fields are required.");
+      return;
+    }
+    setConfirmEscrow(false);
+    setEscrowLoading(true);
+    setEscrowError("");
+    try {
+      const result = await addRentalPayment(escrowRental._id, {
+        amount: Number(escrowAmount),
+        method: escrowMethod,
+        reference: escrowReference,
+      });
+      if (result && !result.error) {
+        fetchRequests();
+        setEscrowDialogOpen(false);
+        setSnackbar({ open: true, message: 'Escrow payment successful!', severity: 'success' });
+      } else {
+        setEscrowError(result.error || "Failed to process payment");
+        setSnackbar({ open: true, message: result.error || 'Failed to process payment', severity: 'error' });
+      }
+    } catch (err) {
+      setEscrowError("Network or server error. Please try again.");
+      setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
+    } finally {
+      setEscrowLoading(false);
+    }
+  };
+
+  // Handler for releasing escrow (owner action)
+  const handleReleaseEscrow = async (rentalId: string) => {
+    setConfirmRelease(null);
+    setReleaseLoading(rentalId);
+    setReleaseError(null);
+    try {
+      const result = await releaseEscrow(rentalId);
+      if (result && !result.error) {
+        fetchRequests();
+        setSnackbar({ open: true, message: 'Escrow released successfully!', severity: 'success' });
+      } else {
+        setReleaseError(result.error || "Failed to release escrow");
+        setSnackbar({ open: true, message: result.error || 'Failed to release escrow', severity: 'error' });
+      }
+    } catch (err) {
+      setReleaseError("Network or server error. Please try again.");
+      setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
+    } finally {
+      setReleaseLoading(null);
+    }
+  };
+
+  const handleOpenDisputeDialog = (rental: RentalRequest) => {
+    setDisputeRental(rental);
+    setDisputeReason("");
+    setDisputeEvidence("");
+    setDisputeFile(null);
+    setDisputeFileUrl("");
+    setDisputeError("");
+    setDisputeDialogOpen(true);
+  };
+  const handleCloseDisputeDialog = () => {
+    setDisputeDialogOpen(false);
+    setDisputeRental(null);
+    setDisputeError("");
+  };
+  const handleRaiseDispute = async () => {
+    if (!disputeRental) return;
+    if (!disputeReason) {
+      setDisputeError("Reason is required.");
+      return;
+    }
+    setConfirmDispute(false);
+    setDisputeLoading(true);
+    setDisputeError("");
+    let evidenceUrl = disputeEvidence;
+    try {
+      if (disputeFile) {
+        const formData = new FormData();
+        formData.append('file', disputeFile);
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('Failed to upload evidence');
+        const data = await res.json();
+        evidenceUrl = data.url;
+      }
+      const result = await raiseDispute(disputeRental._id, { reason: disputeReason, evidenceUrl });
+      if (result && !result.error) {
+        fetchRequests();
+        setDisputeDialogOpen(false);
+        setDisputeFile(null);
+        setDisputeFileUrl("");
+        setSnackbar({ open: true, message: 'Dispute submitted successfully!', severity: 'success' });
+      } else {
+        setDisputeError(result.error || "Failed to raise dispute");
+        setSnackbar({ open: true, message: result.error || 'Failed to raise dispute', severity: 'error' });
+      }
+    } catch (err) {
+      setDisputeError("Network or server error. Please try again.");
+      setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
+    } finally {
+      setDisputeLoading(false);
+    }
+  };
+
+  const handleExportAudit = async (rentalId: string, format: 'pdf' | 'csv' | 'json') => {
+    setExportLoading(rentalId + format);
+    setExportError(null);
+    try {
+      const result = await exportRentalAudit(rentalId, format);
+      if (format === 'pdf' || format === 'csv') {
+        // Download file
+        const url = window.URL.createObjectURL(result);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `rental_audit_${rentalId}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        // Show JSON in a new tab
+        const jsonStr = JSON.stringify(result, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      }
+    } catch (err: any) {
+      setExportError(err.message || 'Failed to export audit');
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  // PDF view handler
+  const handleViewPdf = async (rentalId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const url = `/api/rentals/${rentalId}/export?format=pdf`;
+      // Open in new tab with auth header via blob workaround
+      const res = await fetch(url, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+      if (!res.ok) throw new Error("Failed to fetch PDF");
+      const blob = await res.blob();
+      const pdfUrl = window.URL.createObjectURL(blob);
+      window.open(pdfUrl, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 10000);
+    } catch (err) {
+      setExportError("Failed to open PDF");
+    }
+  };
+
+  // Scroll to and highlight a rental if focus param is present
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get('focus');
+    if (focusId) {
+      setTimeout(() => {
+        const el = document.getElementById('rental-' + focusId);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('highlight-rental-row');
+          setTimeout(() => el.classList.remove('highlight-rental-row'), 2000);
+        }
+      }, 500);
+    }
+  }, [myRequests, incomingRequests]);
+
+  useEffect(() => {
+    if (escrowDialogOpen && escrowDialogRef.current) {
+      escrowDialogRef.current.focus();
+    }
+  }, [escrowDialogOpen]);
+  useEffect(() => {
+    if (disputeDialogOpen && disputeDialogRef.current) {
+      disputeDialogRef.current.focus();
+    }
+  }, [disputeDialogOpen]);
+
+  const userId = getCurrentUserId();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   return (
-    <div style={{ maxWidth: 900, margin: '2.5em auto', padding: '0 1em' }}>
-      <h2 style={{ textAlign: 'center', color: '#FF9800', fontWeight: 700, marginBottom: '1.5em' }}>My Rental Requests</h2>
+    <div style={{ maxWidth: 1000, margin: '2.5em auto', padding: '0 1em', fontFamily: 'Inter, Arial, sans-serif' }}>
+      <h2 style={{ textAlign: 'center', color: '#FF9800', fontWeight: 800, marginBottom: '1.5em', letterSpacing: 1 }}>My Rental Activity</h2>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <h3 style={{ marginTop: 32, color: '#FF9800' }}>Requests I Made</h3>
-      {loading ? <div>Loading...</div> : (
-        <div style={{ marginBottom: 32 }}>
-          {myRequests.length === 0 ? <div style={{ color: '#888' }}>No requests made yet.</div> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#FFF3E0' }}>
-                  <th>Listing</th>
-                  <th>Owner</th>
-                  <th>Status</th>
-                  <th>Requested</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myRequests.map(req => (
-                  <tr key={req._id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td><Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link></td>
-                    <td>{req.owner?.email || '-'}</td>
-                    <td>
-                      <span style={{
-                        background: req.status === 'pending' ? '#FFFDE7' : req.status === 'approved' ? '#C8E6C9' : '#FFCDD2',
-                        color: req.status === 'pending' ? '#FF9800' : req.status === 'approved' ? '#388E3C' : '#C62828',
-                        borderRadius: 8, padding: '4px 14px', fontWeight: 700, fontSize: 15
-                      }}>{req.status.charAt(0).toUpperCase() + req.status.slice(1)}</span>
-                    </td>
-                    <td>{new Date(req.createdAt).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, justifyContent: 'space-between' }}>
+        {/* Requests I Made */}
+        <section style={{ flex: 1, minWidth: 340, background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 24, marginBottom: 32 }}>
+          <h3 style={{ color: '#FF9800', fontWeight: 700, marginBottom: 18, letterSpacing: 0.5 }}>Requests I Made</h3>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 120 }}>
+              <LinearProgress sx={{ width: '60%' }} aria-label="Loading your rental requests" />
+            </Box>
+          ) : (
+            myRequests.length === 0 ? (
+              <Box sx={{ textAlign: 'center', color: '#888', py: 4 }}>
+                <NoDataSvg style={{ margin: '0 auto', display: 'block', maxWidth: 180 }} />
+                <div style={{ marginTop: 18, fontSize: 17, color: '#888', fontWeight: 500 }}>No requests made yet.</div>
+              </Box>
+            ) : (
+              isMobile ? (
+                <Box>
+                  {myRequests.map(req => (
+                    <Box key={req._id} id={`rental-${req._id}`} sx={{ mb: 2, p: 2, borderRadius: 2, boxShadow: '0 2px 8px #0001', background: '#fff', border: '1px solid #eee', position: 'relative', transition: 'box-shadow 0.3s, border 0.3s', '&.highlight-rental-row': { boxShadow: '0 0 0 3px #FF9800', border: '2px solid #FF9800' } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <DescriptionIcon sx={{ color: '#FF9800', mr: 1 }} />
+                        <Link to={`/listing/${req.listing._id}`} style={{ fontWeight: 700, color: '#1976D2', fontSize: 17 }}>{req.listing.title}</Link>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Avatar sx={{ width: 28, height: 28, bgcolor: '#90caf9', fontSize: 15, mr: 1 }}>
+                          {req.owner?.name ? req.owner.name[0].toUpperCase() : (req.owner?.email ? req.owner.email[0].toUpperCase() : '?')}
+                        </Avatar>
+                        <span style={{ fontWeight: 500 }}>{req.owner?.name || req.owner?.email || '-'}</span>
+                      </Box>
+                      <Box sx={{ mb: 1 }}>
+                        <Chip
+                          label={req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                          color={req.status === 'pending' ? 'warning' : req.status === 'approved' ? 'success' : req.status === 'declined' ? 'error' : req.status === 'paid' ? 'info' : req.status === 'completed' ? 'success' : 'default'}
+                          variant={['pending','approved','paid','completed'].includes(req.status) ? 'filled' : 'outlined'}
+                          size="small"
+                          sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
+                          aria-label={`Status: ${req.status}`}
+                        />
+                        {req.status === 'approved' && !req.payment && (
+                          <Tooltip title="Pay Escrow">
+                            <Button variant="contained" color="warning" size="small" sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }} onClick={() => handleOpenEscrowDialog(req)} aria-label="Pay Escrow">Pay Escrow</Button>
+                          </Tooltip>
+                        )}
+                        {req.status === 'paid' && (
+                          <Tooltip title="Escrow Paid">
+                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Paid</span>
+                          </Tooltip>
+                        )}
+                      </Box>
+                      <Box sx={{ fontSize: 14, color: '#888', mb: 1 }}>
+                        Requested: {new Date(req.createdAt).toLocaleString()}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                        <Tooltip title="View PDF"><span><IconButton color="primary" size="small" onClick={() => handleViewPdf(req._id)} aria-label="View PDF"><PictureAsPdfIcon /></IconButton></span></Tooltip>
+                        <Tooltip title="Download PDF"><span><IconButton color="primary" size="small" onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'} aria-label="Download PDF"><PictureAsPdfIcon /></IconButton></span></Tooltip>
+                        <Tooltip title="Export CSV"><span><IconButton color="success" size="small" onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'} aria-label="Export CSV"><TableChartIcon /></IconButton></span></Tooltip>
+                        <Tooltip title="Export JSON"><span><IconButton sx={{ color: '#FFA000' }} size="small" onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'} aria-label="Export JSON"><DescriptionIcon /></IconButton></span></Tooltip>
+                        {exportError && (
+                          <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
+                        )}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 15 }}>
+                  <thead>
+                    <tr style={{ background: '#FFF3E0' }}>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Listing</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Owner</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Requested</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myRequests.map(req => (
+                      <tr key={req._id} id={`rental-${req._id}`} style={{ borderBottom: '1px solid #eee', background: '#fff' }}>
+                        <td style={{ padding: 8 }}><Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link></td>
+                        <td style={{ padding: 8 }}>{req.owner?.name || req.owner?.email || '-'}</td>
+                        <td style={{ padding: 8 }}>
+                          <span style={{
+                            background: req.status === 'pending' ? '#FFFDE7' : req.status === 'approved' ? '#C8E6C9' : '#FFCDD2',
+                            color: req.status === 'pending' ? '#FF9800' : req.status === 'approved' ? '#388E3C' : '#C62828',
+                            borderRadius: 8, padding: '4px 14px', fontWeight: 700, fontSize: 15
+                          }}>{req.status.charAt(0).toUpperCase() + req.status.slice(1)}</span>
+                          {req.status === 'approved' && !req.payment && (
+                            <button style={{ marginLeft: 12, background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer' }} onClick={() => handleOpenEscrowDialog(req)}>
+                              Pay Escrow
+                            </button>
+                          )}
+                          {req.status === 'paid' && (
+                            <span style={{ marginLeft: 12, color: '#388E3C', fontWeight: 700 }}>(Escrow Paid)</span>
+                          )}
+                        </td>
+                        <td style={{ padding: 8 }}>{new Date(req.createdAt).toLocaleString()}</td>
+                        <td style={{ padding: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            {/* Export/Print actions */}
+                            <Tooltip title="View PDF">
+                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleViewPdf(req._id)}>
+                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip title="Download PDF">
+                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'}>
+                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip title="Export CSV">
+                              <button style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'}>
+                                <TableChartIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip title="Export JSON">
+                              <button style={{ background: '#FFA000', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'}>
+                                <DescriptionIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            {exportError && (
+                              <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            )
           )}
-        </div>
-      )}
-      <h3 style={{ marginTop: 32, color: '#FF9800' }}>Requests for My Listings</h3>
-      {loading ? <div>Loading...</div> : (
-        <div>
-          {incomingRequests.length === 0 ? <div style={{ color: '#888' }}>No incoming requests yet.</div> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#FFF3E0' }}>
-                  <th>Listing</th>
-                  <th>Renter</th>
-                  <th>Status</th>
-                  <th>Requested</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {incomingRequests.map(req => (
-                  <tr key={req._id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td><Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link></td>
-                    <td>{req.renter?.email || '-'}</td>
-                    <td>
-                      <span style={{
-                        background: req.status === 'pending' ? '#FFFDE7' : req.status === 'approved' ? '#C8E6C9' : '#FFCDD2',
-                        color: req.status === 'pending' ? '#FF9800' : req.status === 'approved' ? '#388E3C' : '#C62828',
-                        borderRadius: 8, padding: '4px 14px', fontWeight: 700, fontSize: 15
-                      }}>{req.status.charAt(0).toUpperCase() + req.status.slice(1)}</span>
-                    </td>
-                    <td>{new Date(req.createdAt).toLocaleString()}</td>
-                    <td>
-                      {req.status === 'pending' && (
-                        <>
-                          <button onClick={() => handleApprove(req._id)} disabled={actionLoading === req._id} style={{ marginRight: 8, background: '#C8E6C9', color: '#388E3C', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer' }}>Approve</button>
-                          <button onClick={() => handleDecline(req._id)} disabled={actionLoading === req._id} style={{ background: '#FFCDD2', color: '#C62828', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer' }}>Decline</button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        </section>
+        {/* Requests for My Listings */}
+        <section style={{ flex: 1, minWidth: 340, background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 24, marginBottom: 32 }}>
+          <h3 style={{ color: '#FF9800', fontWeight: 700, marginBottom: 18, letterSpacing: 0.5 }}>Requests for My Listings</h3>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 120 }}>
+              <LinearProgress sx={{ width: '60%' }} aria-label="Loading incoming rental requests" />
+            </Box>
+          ) : (
+            incomingRequests.length === 0 ? (
+              <Box sx={{ textAlign: 'center', color: '#888', py: 4 }}>
+                <NoDataSvg style={{ margin: '0 auto', display: 'block', maxWidth: 180 }} />                <div style={{ marginTop: 18, fontSize: 17, color: '#888', fontWeight: 500 }}>No incoming requests yet.</div>
+              </Box>
+            ) : (
+              isMobile ? (
+                <Box>
+                  {incomingRequests.map(req => (
+                    <Box key={req._id} id={`rental-${req._id}`} sx={{ mb: 2, p: 2, borderRadius: 2, boxShadow: '0 2px 8px #0001', background: '#fff', border: '1px solid #eee', position: 'relative', transition: 'box-shadow 0.3s, border 0.3s', '&.highlight-rental-row': { boxShadow: '0 0 0 3px #FF9800', border: '2px solid #FF9800' } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <DescriptionIcon sx={{ color: '#FF9800', mr: 1 }} />
+                        <Link to={`/listing/${req.listing._id}`} style={{ fontWeight: 700, color: '#1976D2', fontSize: 17 }}>{req.listing.title}</Link>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Avatar sx={{ width: 28, height: 28, bgcolor: '#90caf9', fontSize: 15, mr: 1 }}>
+                          {req.renter?.name ? req.renter.name[0].toUpperCase() : (req.renter?.email ? req.renter.email[0].toUpperCase() : '?')}
+                        </Avatar>
+                        <span style={{ fontWeight: 500 }}>{req.renter?.name || req.renter?.email || '-'}</span>
+                      </Box>
+                      <Box sx={{ mb: 1 }}>
+                        <Chip
+                          label={req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                          color={req.status === 'pending' ? 'warning' : req.status === 'approved' ? 'success' : req.status === 'declined' ? 'error' : req.status === 'paid' ? 'info' : req.status === 'completed' ? 'success' : 'default'}
+                          variant={['pending','approved','paid','completed'].includes(req.status) ? 'filled' : 'outlined'}
+                          size="small"
+                          sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
+                          aria-label={`Status: ${req.status}`}
+                        />
+                        {req.status === 'approved' && !req.payment && (
+                          <Tooltip title="Pay Escrow">
+                            <Button variant="contained" color="warning" size="small" sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }} onClick={() => handleOpenEscrowDialog(req)} aria-label="Pay Escrow">Pay Escrow</Button>
+                          </Tooltip>
+                        )}
+                        {req.status === 'paid' && (
+                          <Tooltip title="Escrow Paid">
+                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Paid</span>
+                          </Tooltip>
+                        )}
+                        {req.status === 'paid' && req.owner?._id === userId && (
+                          <Tooltip title="Release Escrow">
+                            <Button
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }}
+                              onClick={() => setConfirmRelease(req._id)}
+                              disabled={releaseLoading === req._id}
+                              aria-label="Release Escrow"
+                            >
+                              <HourglassBottomIcon sx={{ fontSize: 18, mr: 0.5 }} /> {releaseLoading === req._id ? 'Releasing...' : 'Release Escrow'}
+                            </Button>
+                          </Tooltip>
+                        )}
+                        {req.status === 'completed' && (
+                          <Tooltip title="Escrow Released">
+                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Released</span>
+                          </Tooltip>
+                        )}
+                        {['paid', 'active', 'in-progress', 'completed'].includes(req.status) && !req.dispute && (
+                          <Tooltip title="Raise Dispute">
+                            <Button variant="contained" color="error" size="small" sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }} onClick={() => handleOpenDisputeDialog(req)} aria-label="Raise Dispute"><GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute</Button>
+                          </Tooltip>
+                        )}
+                        {req.dispute && (
+                          <Tooltip title={`Dispute: ${req.dispute.status}`}><span style={{ color: '#C62828', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute: {req.dispute.status}</span></Tooltip>
+                        )}
+                      </Box>
+                      <Box sx={{ fontSize: 14, color: '#888', mb: 1 }}>
+                        Requested: {new Date(req.createdAt).toLocaleString()}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                        <Tooltip title="View PDF"><span><IconButton color="primary" size="small" onClick={() => handleViewPdf(req._id)} aria-label="View PDF"><PictureAsPdfIcon /></IconButton></span></Tooltip>
+                        <Tooltip title="Download PDF"><span><IconButton color="primary" size="small" onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'} aria-label="Download PDF"><PictureAsPdfIcon /></IconButton></span></Tooltip>
+                        <Tooltip title="Export CSV"><span><IconButton color="success" size="small" onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'} aria-label="Export CSV"><TableChartIcon /></IconButton></span></Tooltip>
+                        <Tooltip title="Export JSON"><span><IconButton sx={{ color: '#FFA000' }} size="small" onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'} aria-label="Export JSON"><DescriptionIcon /></IconButton></span></Tooltip>
+                        {exportError && (
+                          <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
+                        )}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 15 }}>
+                  <thead>
+                    <tr style={{ background: '#FFF3E0' }}>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Listing</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Renter</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Requested</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {incomingRequests.map(req => (
+                      <tr key={req._id} id={`rental-${req._id}`} style={{ borderBottom: '1px solid #eee', background: '#fff' }}>
+                        <td style={{ padding: 8 }}><Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link></td>
+                        <td style={{ padding: 8 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Avatar sx={{ width: 28, height: 28, bgcolor: '#90caf9', fontSize: 15 }}>
+                              {req.renter?.name ? req.renter.name[0].toUpperCase() : (req.renter?.email ? req.renter.email[0].toUpperCase() : '?')}
+                            </Avatar>
+                            <span>{req.renter?.name || req.renter?.email || '-'}</span>
+                          </Box>
+                        </td>
+                        <td style={{ padding: 8 }}>
+                          <Chip
+                            label={req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                            color={req.status === 'pending' ? 'warning' : req.status === 'approved' ? 'success' : req.status === 'declined' ? 'error' : req.status === 'paid' ? 'info' : req.status === 'completed' ? 'success' : 'default'}
+                            variant={['pending','approved','paid','completed'].includes(req.status) ? 'filled' : 'outlined'}
+                            size="small"
+                            sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
+                            aria-label={`Status: ${req.status}`}
+                          />
+                          {req.status === 'approved' && !req.payment && (
+                            <Tooltip title="Pay Escrow">
+                              <button style={{ marginLeft: 12, background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer' }} onClick={() => handleOpenEscrowDialog(req)}>
+                                Pay Escrow
+                              </button>
+                            </Tooltip>
+                          )}
+                          {req.status === 'paid' && (
+                            <Tooltip title="Escrow Paid">
+                              <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center' }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Paid</span>
+                            </Tooltip>
+                          )}
+                          {req.status === 'paid' && req.owner?._id === userId && (
+                            <Tooltip title="Release Escrow">
+                              <button
+                                style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                onClick={() => setConfirmRelease(req._id)}
+                                disabled={releaseLoading === req._id}
+                              >
+                                <HourglassBottomIcon sx={{ fontSize: 18, mr: 0.5 }} /> {releaseLoading === req._id ? 'Releasing...' : 'Release Escrow'}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {req.status === 'completed' && (
+                            <Tooltip title="Escrow Released">
+                              <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center' }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Released</span>
+                            </Tooltip>
+                          )}
+                          {['paid', 'active', 'in-progress', 'completed'].includes(req.status) && !req.dispute && (
+                            <Tooltip title="Raise Dispute">
+                              <button style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleOpenDisputeDialog(req)}>
+                                <GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute
+                              </button>
+                            </Tooltip>
+                          )}
+                          {req.dispute && (
+                            <Tooltip title={`Dispute: ${req.dispute.status}`}><span style={{ color: '#C62828', fontWeight: 700, display: 'flex', alignItems: 'center' }}><GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute: {req.dispute.status}</span></Tooltip>
+                          )}
+                        </td>
+                        <td style={{ padding: 8 }}>{new Date(req.createdAt).toLocaleString()}</td>
+                        <td style={{ padding: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            {/* Export/Print actions */}
+                            <Tooltip title="View PDF">
+                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleViewPdf(req._id)}>
+                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip title="Download PDF">
+                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'}>
+                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip title="Export CSV">
+                              <button style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'}>
+                                <TableChartIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip title="Export JSON">
+                              <button style={{ background: '#FFA000', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'}>
+                                <DescriptionIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                              </button>
+                            </Tooltip>
+                            {exportError && (
+                              <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            )
           )}
-        </div>
-      )}
+        </section>
+      </div>
+      {/* Escrow Payment Dialog */}
+      <Dialog open={escrowDialogOpen} onClose={handleCloseEscrowDialog} PaperProps={{ sx: { borderRadius: 3, minWidth: 350 } }} TransitionComponent={Grow}>
+        <div ref={escrowDialogRef} tabIndex={-1} />
+        <DialogTitle sx={{ fontWeight: 700, color: '#FF9800', fontSize: 22, letterSpacing: 0.5, pb: 0 }}>Pay Escrow</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <div style={{ marginBottom: 16, fontSize: 16, color: '#333' }}>
+            <b>Listing:</b> <span style={{ color: '#1976D2', fontWeight: 600 }}>{escrowRental?.listing?.title}</span><br />
+            <b>Amount:</b> <TextField size="small" type="number" value={escrowAmount} onChange={e => setEscrowAmount(e.target.value)} sx={{ width: 120, ml: 1, background: '#FFFDE7', borderRadius: 1, fontWeight: 700 }} inputProps={{ min: 0, style: { fontWeight: 700 } }} />
+          </div>
+          <TextField label="Payment Method" size="small" fullWidth value={escrowMethod} onChange={e => setEscrowMethod(e.target.value)} sx={{ mb: 2, background: '#F5F5F5', borderRadius: 1 }} inputProps={{ maxLength: 32 }} />
+          <TextField label="Reference" size="small" fullWidth value={escrowReference} onChange={e => setEscrowReference(e.target.value)} sx={{ mb: 2, background: '#F5F5F5', borderRadius: 1 }} inputProps={{ maxLength: 32 }} />
+          {escrowError && <Alert severity="error" sx={{ mb: 1 }}>{escrowError}</Alert>}
+        </DialogContent>
+        <DialogActions sx={{ pb: 2, pr: 3 }}>
+          <button onClick={handleCloseEscrowDialog} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: 'pointer', fontSize: 15, transition: 'background 0.2s' }}>Cancel</button>
+          <button
+            onClick={() => setConfirmEscrow(true)}
+            disabled={escrowLoading}
+            style={{ background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: escrowLoading ? 'not-allowed' : 'pointer', fontSize: 15, boxShadow: escrowLoading ? '0 0 0 2px #FF9800' : undefined, opacity: escrowLoading ? 0.7 : 1, transition: 'background 0.2s, opacity 0.2s', display: 'flex', alignItems: 'center', gap: 8 }}
+            title={escrowLoading ? 'Processing payment...' : ''}
+          >
+            {escrowLoading && <CircularProgress size={18} sx={{ color: '#fff' }} />} {escrowLoading ? 'Paying...' : 'Pay Escrow'}
+          </button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={confirmEscrow} onClose={() => setConfirmEscrow(false)}>
+        <DialogTitle>Confirm Escrow Payment</DialogTitle>
+        <DialogContent>Are you sure you want to pay escrow for <b>{escrowRental?.listing?.title}</b>?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmEscrow(false)}>Cancel</Button>
+          <Button onClick={handleEscrowPayment} color="warning" variant="contained">Confirm</Button>
+        </DialogActions>
+      </Dialog>
+      {/* Dispute Dialog */}
+      <Dialog open={disputeDialogOpen} onClose={handleCloseDisputeDialog} PaperProps={{ sx: { borderRadius: 3, minWidth: 350 } }} TransitionComponent={Grow}>
+        <div ref={disputeDialogRef} tabIndex={-1} />
+        <DialogTitle sx={{ fontWeight: 700, color: '#C62828', fontSize: 22, letterSpacing: 0.5, pb: 0 }}>Raise Dispute</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Alert severity="info" sx={{ mb: 2, fontSize: 15, alignItems: 'center', background: '#FFF3E0', color: '#C62828', borderRadius: 2 }}>
+            <b>Disputes are for serious issues only.</b><br />
+            Please describe the problem clearly and provide any evidence (such as a link to photos, documents, or upload a file). Our team will review your case and contact both parties.
+          </Alert>
+          <TextField label="Reason for Dispute" size="small" fullWidth value={disputeReason} onChange={e => setDisputeReason(e.target.value)} sx={{ mb: 2, background: '#FFFDE7', borderRadius: 1 }} multiline minRows={2} inputProps={{ maxLength: 200 }} />
+          <TextField label="Evidence URL (optional)" size="small" fullWidth value={disputeEvidence} onChange={e => setDisputeEvidence(e.target.value)} sx={{ mb: 2, background: '#F5F5F5', borderRadius: 1 }} inputProps={{ maxLength: 200 }} />
+          <Box sx={{ mb: 2 }}>
+            <label htmlFor="dispute-file-upload">
+              <InputAdornment position="start">
+                <IconButton component="span" sx={{ color: '#1976D2' }}>
+                  <CloudUploadIcon />
+                </IconButton>
+              </InputAdornment>
+              <input
+                id="dispute-file-upload"
+                type="file"
+                accept="image/*,application/pdf"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  if (e.target.files && e.target.files[0]) {
+                    setDisputeFile(e.target.files[0]);
+                    setDisputeFileUrl(e.target.files[0].name);
+                  }
+                }}
+              />
+              <span style={{ marginLeft: 8, color: '#1976D2', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}>
+                {disputeFileUrl ? `Attached: ${disputeFileUrl}` : 'Attach Evidence File (optional)'}
+              </span>
+            </label>
+          </Box>
+          {disputeError && <Alert severity="error" sx={{ mb: 1 }}>{disputeError}</Alert>}
+        </DialogContent>
+        <DialogActions sx={{ pb: 2, pr: 3 }}>
+          <button onClick={handleCloseDisputeDialog} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: 'pointer', fontSize: 15, transition: 'background 0.2s' }}>Cancel</button>
+          <button
+            onClick={() => setConfirmDispute(true)}
+            disabled={disputeLoading}
+            style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: disputeLoading ? 'not-allowed' : 'pointer', fontSize: 15, boxShadow: disputeLoading ? '0 0 0 2px #C62828' : undefined, opacity: disputeLoading ? 0.7 : 1, transition: 'background 0.2s, opacity 0.2s', display: 'flex', alignItems: 'center', gap: 8 }}
+            title={disputeLoading ? 'Submitting dispute...' : ''}
+          >
+            {disputeLoading && <CircularProgress size={18} sx={{ color: '#fff' }} />} {disputeLoading ? 'Submitting...' : 'Submit Dispute'}
+          </button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={confirmDispute} onClose={() => setConfirmDispute(false)}>
+        <DialogTitle>Confirm Dispute Submission</DialogTitle>
+        <DialogContent>Are you sure you want to submit a dispute for <b>{disputeRental?.listing?.title}</b>?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDispute(false)}>Cancel</Button>
+          <Button onClick={handleRaiseDispute} color="error" variant="contained">Confirm</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={!!confirmRelease} onClose={() => setConfirmRelease(null)}>
+        <DialogTitle>Confirm Escrow Release</DialogTitle>
+        <DialogContent>Are you sure you want to release escrow for this rental?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmRelease(null)}>Cancel</Button>
+          <Button onClick={() => confirmRelease && handleReleaseEscrow(confirmRelease)} color="success" variant="contained">Confirm</Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{ zIndex: 1400 }}
+      >
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%', fontWeight: 700, fontSize: 16 }} variant="filled">
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+      <style>{`
+        button:focus {
+          outline: 2px solid #FF9800;
+          outline-offset: 2px;
+        }
+        .highlight-rental-row {
+          box-shadow: 0 0 0 3px #FF9800 !important;
+          border: 2px solid #FF9800 !important;
+          transition: box-shadow 0.3s, border 0.3s;
+        }
+      `}</style>
     </div>
   );
 };

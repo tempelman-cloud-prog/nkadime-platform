@@ -9,7 +9,16 @@ export async function login(email: string, password: string) {
   return res.json();
 }
 
-export async function register(data: { name: string; email: string; password: string; phone?: string }) {
+export async function register(data: { name: string; email: string; password: string; phone?: string, isAdmin?: boolean }) {
+  // Check if admin registration is requested
+  if (data.isAdmin) {
+    // Only allow if no admin exists
+    const res = await fetch(`${API_BASE}/users?role=admin`);
+    const admins = await res.json();
+    if (admins && admins.length > 0) {
+      return { error: "An admin already exists. Only one admin is allowed." };
+    }
+  }
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -451,6 +460,54 @@ export async function markMessagesRead(listingId: string, fromUserId: string) {
   return res.json();
 }
 
+
+export async function getUserStats(userId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/users/${userId}/stats`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Release escrow after rental completion (owner action)
+export async function releaseEscrow(rentalId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/release-escrow`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: fetch all open disputes
+export async function getOpenDisputes() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/disputes/open`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+// Admin: resolve a dispute
+export async function resolveDispute(rentalId: string, data: { resolution: string; status: string }) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/rentals/${rentalId}/dispute/resolve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+// Admin: send message reply (to user in context of a listing)
 export async function sendMessageReply(listingId: string, toUserId: string, message: string) {
   const token = localStorage.getItem("token");
   const res = await fetch(`${API_BASE}/messages/${listingId}/reply`, {
@@ -459,14 +516,112 @@ export async function sendMessageReply(listingId: string, toUserId: string, mess
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
-    body: JSON.stringify({ toUserId, message })
+    body: JSON.stringify({ toUserId, message }),
   });
   return res.json();
 }
 
-export async function getUserStats(userId: string) {
+// Admin: fetch all users
+export async function getAllUsers() {
   const token = localStorage.getItem("token");
-  const res = await fetch(`${API_BASE}/users/${userId}/stats`, {
+  const res = await fetch(`${API_BASE}/admin/users`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: suspend a user
+export async function suspendUser(userId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/users/${userId}/suspend`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: activate a user
+export async function activateUser(userId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/users/${userId}/activate`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: delete a user
+export async function deleteUser(userId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/users/${userId}`, {
+    method: "DELETE",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: fetch all listings
+export async function getAllListingsAdmin() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/admin/listings`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: delete a listing
+export async function deleteListingAdmin(listingId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/admin/listings/${listingId}`, {
+    method: "DELETE",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: fetch all rentals
+export async function getAllRentalsAdmin() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/admin/rentals`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}
+
+// Admin: update rental status
+export async function updateRentalStatusAdmin(rentalId: string, data: { status: string; note?: string }) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/admin/rentals/${rentalId}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+// Admin: fetch analytics
+export async function getAdminAnalytics() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/admin/analytics`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     }

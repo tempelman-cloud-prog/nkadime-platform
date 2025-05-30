@@ -11,6 +11,7 @@ export interface IUser extends Document {
   profilePic?: string;
   location?: string;
   bio?: string; // Add bio to interface
+  suspended?: boolean; // Add suspended to interface
 }
 
 const UserSchema: Schema = new Schema({
@@ -23,7 +24,8 @@ const UserSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now },
   profilePic: { type: String },
   location: { type: String },
-  bio: { type: String, default: '' } // Add bio to schema
+  bio: { type: String, default: '' }, // Add bio to schema
+  suspended: { type: Boolean, default: false } // Add suspended to schema
 });
 
 const User = mongoose.model<IUser>('User', UserSchema);

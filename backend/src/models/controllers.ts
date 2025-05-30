@@ -11,8 +11,7 @@ export const register = async (req: Request, res: Response) => {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: 'Email already in use' });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
+    }    const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ name, email, password: hashedPassword, phone });
     await user.save();
     res.status(201).json({ message: 'User registered successfully' });
@@ -34,7 +33,7 @@ export const login = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid email or password' });
     }
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id, email: user.email, isAdmin: user.isAdmin },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
@@ -43,16 +42,17 @@ export const login = async (req: Request, res: Response) => {
     if (!freshUser) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json({
-      token,
-      user: {
-        id: freshUser._id,
-        name: freshUser.name,
-        email: freshUser.email,
-        location: freshUser.location,
-        profilePic: freshUser.profilePic,
-        bio: freshUser.bio // Return bio on login
-      }
+        res.json({
+          token,
+          user: {
+            id: freshUser._id,
+            name: freshUser.name,
+            email: freshUser.email,
+            location: freshUser.location,
+            profilePic: freshUser.profilePic,
+            bio: freshUser.bio, // Return bio on login
+            isAdmin: freshUser.isAdmin // Add isAdmin to user object
+          }
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -163,10 +163,10 @@ export const getListings = async (req: Request, res: Response) => {
     }
     // Pagination
     const pageNum = Number(page) || 1;
-    const pageSize = Number(limit) || 12;
+    const pageSize = Number(limit) || 20;
     const skip = (pageNum - 1) * pageSize;
     const [listings, total] = await Promise.all([
-      Listing.find(filter).sort(sort).skip(skip).limit(pageSize),
+      Listing.find(filter).sort(sort).skip(skip).limit(pageSize).populate('owner', 'name email'),
       Listing.countDocuments(filter)
     ]);
     res.json({ listings, total });
@@ -441,8 +441,7 @@ export const createRentalRequest = async (req: Request, res: Response) => {
 // Get rental requests made by the current user (as renter)
 export const getMyRentalRequests = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    const rentals = await Rental.find({ renter: userId })
+    const userId = (req as any).user?.userId;    const rentals = await Rental.find({ renter: userId })
       .populate('listing')
       .populate('owner', 'email name')
       .sort({ createdAt: -1 });
@@ -550,7 +549,9 @@ export const updateRentalStatus = async (req: Request, res: Response) => {
         : ((rental.listing as any)?._id ?? rental.listing);
       await Notification.create({
         // @ts-ignore
-        user: rental.renter._id || rental.renter,
+        user: typeof rental.renter === 'object' && rental.renter !== null && '_id' in rental.renter
+          ? (rental.renter as any)._id
+          : rental.renter,
         type: 'rental_status',
         message: `Your rental request for '${listingTitle}' was ${status}.`,
         data: { rental: rental._id, listing: listingId, status }
@@ -593,15 +594,52 @@ export const addRentalPayment = async (req: Request, res: Response) => {
   try {
     const { rentalId } = req.params;
     const { amount, method, reference, paidAt } = req.body;
+    const userId = (req as any).user?.userId;
     if (!amount || !method || !reference) {
       return res.status(400).json({ error: 'Missing payment info' });
     }
+    // Update payment, status, and statusHistory atomically
     const rental = await Rental.findByIdAndUpdate(
       rentalId,
-      { payment: { amount, method, reference, paidAt: paidAt ? new Date(paidAt) : new Date() } },
+      {
+        payment: { amount, method, reference, paidAt: paidAt ? new Date(paidAt) : new Date() },
+        status: 'paid',
+        $push: { statusHistory: { status: 'paid', by: userId, at: new Date(), note: 'Escrow payment made' } }
+      },
       { new: true }
-    );
+    ).populate('owner', 'name email').populate('renter', 'name email').populate('listing', 'title');
     if (!rental) return res.status(404).json({ error: 'Rental not found' });
+
+    // Create notifications for both owner and renter
+    const Notification = (await import('./Notification')).default;
+    // Get owner and renter IDs
+    const ownerId = rental.owner && typeof rental.owner === 'object' && 'id' in rental.owner ? rental.owner.id : rental.owner.toString();
+    const renterId = rental.renter && typeof rental.renter === 'object' && 'id' in rental.renter ? rental.renter.id : rental.renter.toString();
+    // Get listing title if populated
+    let listingTitle = '';
+    if (
+      rental.listing &&
+      typeof rental.listing === 'object' &&
+      'title' in rental.listing &&
+      typeof (rental.listing as any).title === 'string'
+    ) {
+      listingTitle = (rental.listing as any).title;
+    }
+    // Notify owner
+    await Notification.create({
+      user: ownerId,
+      type: 'escrow_paid',
+      message: `Escrow payment received for rental${listingTitle ? ` '${listingTitle}'` : ''}.`,
+      createdAt: new Date(),
+    });
+    // Notify renter
+    await Notification.create({
+      user: renterId,
+      type: 'escrow_paid',
+      message: `You have paid escrow for rental${listingTitle ? ` '${listingTitle}'` : ''}.`,
+      createdAt: new Date(),
+    });
+
     res.json(rental);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -717,7 +755,7 @@ export const exportRentalAudit = async (req: Request, res: Response) => {
         endDate: rental.endDate,
       };
       // Flatten statusHistory, payment, messages, reviews as JSON strings
-      flatRental.statusHistory = JSON.stringify(rental.statusHistory || []);
+      flatRental.statusHistory =
       flatRental.payment = JSON.stringify(rental.payment || {});
       flatRental.messages = JSON.stringify(rental.messages || []);
       flatRental.reviews = JSON.stringify(rental.reviews || []);
@@ -979,7 +1017,7 @@ export const resolveDispute = async (req: Request, res: Response) => {
 // Admin: fetch all open disputes
 export const getOpenDisputes = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId || req.body.userId;
+    const userId = (req as any).user?.userId;
     const user = await User.findById(userId);
     if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
     const disputes = await Rental.find({ 'dispute.status': 'open' })
@@ -993,58 +1031,112 @@ export const getOpenDisputes = async (req: Request, res: Response) => {
     res.status(400).json({ error: message });
   }
 };
-// Reply to a message in a conversation (send a message from current user to toUserId for a listing)
-export const replyToListingMessage = async (req: Request, res: Response) => {
+
+// --- ADMIN CONTROLLERS ---
+// Admin: Get all users
+export const adminGetAllUsers = async (req: Request, res: Response) => {
   try {
-    const listingId = req.params.listingId;
-    const { toUserId, message } = req.body;
-    const fromUserId = (req as any).user?.userId;
-    if (!fromUserId) return res.status(401).json({ error: 'User not authenticated' });
-    if (!toUserId || !message) return res.status(400).json({ error: 'Missing toUserId or message' });
-    if (!listingId) return res.status(400).json({ error: 'Missing listingId' });
-    // Don't allow sending to self
-    if (String(fromUserId) === String(toUserId)) {
-      return res.status(400).json({ error: 'Cannot send message to yourself' });
-    }
-    const msg = new ListingMessage({
-      listing: listingId,
-      fromUser: fromUserId,
-      toUser: toUserId,
-      message,
-      createdAt: new Date(),
-      read: false
-    });
-    await msg.save();
-    res.status(201).json(msg);
+    const userId = (req as any).user?.userId;
+    const user = await User.findById(userId);
+    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const users = await User.find().select('-password');
+    res.json({ users }); // <-- Ensure response is { users: [...] }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });
   }
 };
 
-// Get user stats: successful transactions, dispute count, average rating
-export const getUserStats = async (req: Request, res: Response) => {
+// Get all admins
+export const getAdmins = async (req: Request, res: Response) => {
   try {
-    const userId = req.params.userId;
-    if (!userId) return res.status(400).json({ error: 'Missing userId' });
-    // Successful transactions (as owner or renter)
-    const successful = await Rental.countDocuments({
-      $or: [ { owner: userId }, { renter: userId } ],
-      status: 'completed'
-    });
-    // Dispute count (as owner or renter)
-    const disputes = await Rental.countDocuments({
-      $or: [ { owner: userId }, { renter: userId } ],
-      'dispute.status': { $exists: true, $ne: null }
-    });
-    // Average rating (reuse existing logic)
-    const result = await Review.aggregate([
-      { $match: { reviewedUser: userId } },
-      { $group: { _id: null, avg: { $avg: "$rating" }, count: { $sum: 1 } } }
-    ]);
-    const avgRating = result.length > 0 ? result[0].avg : null;
-    const ratingCount = result.length > 0 ? result[0].count : 0;
-    res.json({ successful, disputes, avgRating, ratingCount });
+    const userId = (req as any).user?.userId;
+    const user = await User.findById(userId);
+    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const admins = await User.find({ isAdmin: true }).select('-password');
+    res.json(admins);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Admin: Get all listings
+export const adminGetAllListings = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const user = await User.findById(userId);
+    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const listings = await Listing.find().populate('owner', 'name email');
+    res.json({ listings }); // Return as { listings: [...] }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Admin: Delete a listing
+export const adminDeleteListing = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const user = await User.findById(userId);
+    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const listingId = req.params.id;
+    const listing = await Listing.findByIdAndDelete(listingId);
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    // Optionally: remove associated favorites, reviews, notifications, etc.
+    res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Admin
+export const adminGetAnalytics = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const user = await User.findById(userId);
+    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const userCount = await User.countDocuments();
+    const listingCount = await Listing.countDocuments();
+    const rentalCount = await Rental.countDocuments();
+    const activeRentals = await Rental.countDocuments({ status: { $in: ['active', 'in-progress'] } });
+    const completedRentals = await Rental.countDocuments({ status: 'completed' });
+    res.json({ userCount, listingCount, rentalCount, activeRentals, completedRentals });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Admin: Get all rentals
+export const adminGetAllRentals = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const user = await User.findById(userId);
+    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const rentals = await Rental.find()
+      .populate('listing')
+      .populate('owner', 'email name')
+      .populate('renter', 'email name')
+      .sort({ createdAt: -1 });
+    res.json({ rentals });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Admin: Update rental status
+export const adminUpdateRentalStatus = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const user = await User.findById(userId);
+    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    // Use the same logic as updateRentalStatus
+    req.body.adminOverride = true;
+    return updateRentalStatus(req, res);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });

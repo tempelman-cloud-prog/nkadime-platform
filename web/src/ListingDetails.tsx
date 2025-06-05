@@ -27,7 +27,7 @@ interface Listing {
   priceUnit?: string;
   location: string;
   owner: string;
-  available: boolean;
+  status: 'available' | 'pending approval' | 'unavailable';
 }
 
 interface JwtPayload {
@@ -49,6 +49,8 @@ const ListingDetails: React.FC = () => {
   const [rentalModalOpen, setRentalModalOpen] = useState(false);
   const [rentalStart, setRentalStart] = useState("");
   const [rentalEnd, setRentalEnd] = useState("");
+  const [rentalStartTime, setRentalStartTime] = useState("");
+  const [rentalEndTime, setRentalEndTime] = useState("");
   const [rentalMsg, setRentalMsg] = useState("");
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState<number>(0);
@@ -64,6 +66,8 @@ const ListingDetails: React.FC = () => {
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Add state for calculated total
+  const [rentalTotal, setRentalTotal] = useState<number | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -96,10 +100,7 @@ const ListingDetails: React.FC = () => {
           setIsOwner(userId === found.owner);
           // Fetch rental history for this user and listing
           try {
-            const rentals = await getRentalHistory(userId);
-            // const completedRental = (rentals || []).find((r: any) => r.listing === found._id && r.status === "completed");
-            // Check if already reviewed owner for this rental
-            // const alreadyReviewed = (userReviews || []).some((rev: any) => rev.reviewer === userId && rev.rental === completedRental?._id);
+            await getRentalHistory(userId);
           } catch {}
         }
       } catch (err) {
@@ -236,6 +237,24 @@ const ListingDetails: React.FC = () => {
     }
     setMessageLoading(false);
   };
+
+  // Update total when dates/times change
+  useEffect(() => {
+    if (!listing || !rentalStart || !rentalEnd || !rentalStartTime || !rentalEndTime) {
+      setRentalTotal(null);
+      return;
+    }
+    const start = new Date(rentalStart + 'T' + rentalStartTime);
+    const end = new Date(rentalEnd + 'T' + rentalEndTime);
+    if (end <= start) {
+      setRentalTotal(null);
+      return;
+    }
+    const ms = end.getTime() - start.getTime();
+    const hours = ms / (1000 * 60 * 60);
+    const pricePerHour = listing.price;
+    setRentalTotal(Math.round(hours * pricePerHour * 100) / 100);
+  }, [listing, rentalStart, rentalEnd, rentalStartTime, rentalEndTime]);
 
   if (loading) return (
     <div style={{ maxWidth: 820, margin: '3em auto', padding: '2.5em 2em' }}>
@@ -501,11 +520,16 @@ const ListingDetails: React.FC = () => {
             <label style={{ display: 'block', marginBottom: 12 }}>
               Start Date:
               <input type="date" value={rentalStart} onChange={e => setRentalStart(e.target.value)} style={{ marginLeft: 8, padding: 6, borderRadius: 6, border: '1px solid #ccc' }} />
+              <input type="time" value={rentalStartTime} onChange={e => setRentalStartTime(e.target.value)} style={{ marginLeft: 8, padding: 6, borderRadius: 6, border: '1px solid #ccc', width: 120 }} />
             </label>
             <label style={{ display: 'block', marginBottom: 18 }}>
               End Date:
               <input type="date" value={rentalEnd} onChange={e => setRentalEnd(e.target.value)} style={{ marginLeft: 8, padding: 6, borderRadius: 6, border: '1px solid #ccc' }} />
+              <input type="time" value={rentalEndTime} onChange={e => setRentalEndTime(e.target.value)} style={{ marginLeft: 8, padding: 6, borderRadius: 6, border: '1px solid #ccc', width: 120 }} />
             </label>
+            <div style={{ marginBottom: 16, fontWeight: 700, color: '#0a2342', fontSize: 17 }}>
+              {rentalTotal !== null ? `Total Charge: ${rentalTotal} (${listing?.price} per hour)` : 'Select start and end date/time to see total charge.'}
+            </div>
             <button
               style={{ background: '#FF9800', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, fontSize: 17, marginRight: 10, cursor: 'pointer' }}
               onClick={async () => {
@@ -527,26 +551,29 @@ const ListingDetails: React.FC = () => {
                   setRentalMsg("Please select start and end dates.");
                   return;
                 }
-                if (new Date(rentalEnd) < new Date(rentalStart)) {
-                  setRentalMsg("End date must be after start date.");
+                // Combine date and time for backend
+                const startDateTime = rentalStart + (rentalStartTime ? `T${rentalStartTime}` : 'T00:00');
+                const endDateTime = rentalEnd + (rentalEndTime ? `T${rentalEndTime}` : 'T23:59');
+                if (new Date(endDateTime) < new Date(startDateTime)) {
+                  setRentalMsg("End date/time must be after start date/time.");
                   return;
                 }
                 const result = await createRentalRequest({
-                  listing: listing._id,
+                  listing: listing!._id,
                   renter,
-                  owner: listing.owner,
-                  startDate: rentalStart,
-                  endDate: rentalEnd,
+                  owner: listing!.owner,
+                  startDate: startDateTime,
+                  endDate: endDateTime,
                 });
                 if (result._id) {
                   setRentalMsg("Rental request sent!");
                   // Notify the owner
                   await import('./api').then(api =>
                     api.createNotification(
-                      listing.owner,
+                      listing!.owner,
                       'rental_request',
-                      `You have a new rental request for your listing '${listing.title}'.`,
-                      { listingId: listing._id, rentalId: result._id }
+                      `You have a new rental request for your listing '${listing!.title}'.`,
+                      { listingId: listing!._id, rentalId: result._id }
                     )
                   );
                   setTimeout(() => setRentalModalOpen(false), 1200);

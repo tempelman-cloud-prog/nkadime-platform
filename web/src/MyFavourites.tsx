@@ -74,8 +74,8 @@ const MyFavourites: React.FC = () => {
               position: 'absolute',
               top: 18,
               right: 18,
-              background: listing.available !== false ? '#C8E6C9' : '#FFCDD2',
-              color: listing.available !== false ? '#388E3C' : '#C62828',
+              background: listing.status === 'available' ? '#C8E6C9' : listing.status === 'pending approval' ? '#FFF9C4' : '#FFCDD2',
+              color: listing.status === 'available' ? '#388E3C' : listing.status === 'pending approval' ? '#B59F00' : '#C62828',
               borderRadius: 10,
               padding: '4px 16px',
               fontWeight: 800,
@@ -83,7 +83,7 @@ const MyFavourites: React.FC = () => {
               boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
               zIndex: 2
             }}>
-              {listing.available !== false ? 'Available' : 'Unavailable'}
+              {listing.status === 'available' ? 'Available' : listing.status === 'pending approval' ? 'Pending Approval' : 'Unavailable'}
             </span>
             <button
               onClick={e => { e.stopPropagation(); handleRemove(listing._id); }}

@@ -18,7 +18,7 @@ const Listings: React.FC = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(12);
-  const [available, setAvailable] = useState("");
+  const [status, setStatus] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ const Listings: React.FC = () => {
       if (maxPrice) params.maxPrice = maxPrice;
       if (sortBy) params.sortBy = sortBy;
       if (sortOrder) params.sortOrder = sortOrder;
-      if (available) params.available = available;
+      if (status) params.status = status;
       params.page = page;
       params.limit = pageSize;
       const data = await getListings(params);
@@ -49,7 +49,7 @@ const Listings: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [category, minPrice, maxPrice, sortBy, sortOrder, page, available, pageSize]);
+  }, [category, minPrice, maxPrice, sortBy, sortOrder, page, status, pageSize]);
 
   useEffect(() => {
     fetchListings();
@@ -146,13 +146,14 @@ const Listings: React.FC = () => {
           style={{ padding: '0.7em 1em', borderRadius: 8, border: '1px solid #e0e0e0', width: 110 }}
         />
         <select
-          value={available}
-          onChange={e => { setAvailable(e.target.value); setPage(1); }}
+          value={status}
+          onChange={e => { setStatus(e.target.value); setPage(1); }}
           style={{ padding: '0.7em 1em', borderRadius: 8, border: '1px solid #e0e0e0', minWidth: 120 }}
         >
           <option value="">All Statuses</option>
-          <option value="true">Available</option>
-          <option value="false">Unavailable</option>
+          <option value="available">Available</option>
+          <option value="pending approval">Pending Approval</option>
+          <option value="unavailable">Unavailable</option>
         </select>
         <select
           value={sortBy}
@@ -246,13 +247,14 @@ const Listings: React.FC = () => {
           style={{ padding: '0.7em 1em', borderRadius: 8, border: '1px solid #e0e0e0', width: 110 }}
         />
         <select
-          value={available}
-          onChange={e => { setAvailable(e.target.value); setPage(1); }}
+          value={status}
+          onChange={e => { setStatus(e.target.value); setPage(1); }}
           style={{ padding: '0.7em 1em', borderRadius: 8, border: '1px solid #e0e0e0', minWidth: 120 }}
         >
           <option value="">All Statuses</option>
-          <option value="true">Available</option>
-          <option value="false">Unavailable</option>
+          <option value="available">Available</option>
+          <option value="pending approval">Pending Approval</option>
+          <option value="unavailable">Unavailable</option>
         </select>
         <select
           value={sortBy}
@@ -315,8 +317,8 @@ const Listings: React.FC = () => {
               position: 'absolute',
               top: 18,
               right: 18,
-              background: listing.available !== false ? '#C8E6C9' : '#FFCDD2',
-              color: listing.available !== false ? '#388E3C' : '#C62828',
+              background: listing.status === 'available' ? '#C8E6C9' : listing.status === 'pending approval' ? '#FFF9C4' : '#FFCDD2',
+              color: listing.status === 'available' ? '#388E3C' : listing.status === 'pending approval' ? '#B59F00' : '#C62828',
               borderRadius: 10,
               padding: '4px 16px',
               fontWeight: 800,
@@ -324,7 +326,7 @@ const Listings: React.FC = () => {
               boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
               zIndex: 2
             }}>
-              {listing.available !== false ? 'Available' : 'Unavailable'}
+              {listing.status === 'available' ? 'Available' : listing.status === 'pending approval' ? 'Pending Approval' : 'Unavailable'}
             </span>
             {/* Favorite Button */}
             <button

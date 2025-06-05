@@ -78,16 +78,17 @@ function App() {
     }
   }, []);
 
-  // Fetch unread notifications count
+  // Fetch unread notifications and messages count
   useEffect(() => {
     let interval: NodeJS.Timeout;
     async function fetchUnread() {
       if (userId) {
         try {
           setLoading(true); // Show global loading
+          // Fetch notifications
           const notifications = await getNotifications(userId);
-          const unread = notifications.filter((n: any) => !n.read).length;
-          setUnreadCount(unread);
+          const unreadNotifications = notifications.filter((n: any) => !n.read).length;
+          setUnreadCount(unreadNotifications);
         } catch {
           setUnreadCount(0);
         } finally {

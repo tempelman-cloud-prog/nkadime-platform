@@ -9,7 +9,7 @@ export interface IListing extends Document {
   price: number;
   priceUnit: string;
   location: string;
-  available: boolean;
+  status: 'available' | 'pending approval' | 'unavailable';
   createdAt: Date;
 }
 
@@ -22,7 +22,7 @@ const ListingSchema: Schema = new Schema({
   price: { type: Number, required: true },
   priceUnit: { type: String, default: 'day' },
   location: { type: String, required: true },
-  available: { type: Boolean, default: true },
+  status: { type: String, enum: ['available', 'pending approval', 'unavailable'], default: 'available' },
   createdAt: { type: Date, default: Date.now }
 });
 

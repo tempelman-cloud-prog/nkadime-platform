@@ -88,7 +88,7 @@ export async function getReviews(listingId: string) {
   return res.json();
 }
 
-export async function updateUser(userId: string, data: { name?: string; location?: string; profilePic?: File | null; bio?: string }) {
+export async function updateUser(userId: string, data: { name?: string; location?: string; profilePic?: File | null; bio?: string; mapPosition?: [number, number] | null; showMapLocation?: boolean }) {
   const token = localStorage.getItem("token");
   let res;
   if (data.profilePic) {
@@ -96,6 +96,8 @@ export async function updateUser(userId: string, data: { name?: string; location
     if (data.name) formData.append("name", data.name);
     if (data.location) formData.append("location", data.location);
     if (data.bio !== undefined) formData.append("bio", data.bio);
+    if (data.mapPosition !== undefined) formData.append("mapPosition", JSON.stringify(data.mapPosition));
+    if (data.showMapLocation !== undefined) formData.append("showMapLocation", String(data.showMapLocation));
     formData.append("profilePic", data.profilePic);
     res = await fetch(`${API_BASE}/users/${userId}`, {
       method: "PUT",
@@ -114,7 +116,9 @@ export async function updateUser(userId: string, data: { name?: string; location
       body: JSON.stringify({
         name: data.name,
         location: data.location,
-        bio: data.bio
+        bio: data.bio,
+        mapPosition: data.mapPosition,
+        showMapLocation: data.showMapLocation
       }),
     });
   }
@@ -352,17 +356,34 @@ export async function updateRentalStatusWithAudit(rentalId: string, data: { stat
   return res.json();
 }
 
-export async function sendListingMessage(listingId: string, message: string) {
+export async function sendListingMessage(listingId: string, message: string, toUserId?: string) {
   const token = localStorage.getItem("token");
+  const body: any = { message };
+  if (toUserId) body.toUserId = toUserId;
   const res = await fetch(`${API_BASE}/listings/${listingId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(body),
   });
-  return res.json();
+  const contentType = res.headers.get("content-type");
+  if (!res.ok) {
+    // Try to parse error as JSON, else fallback to text
+    if (contentType && contentType.includes("application/json")) {
+      const error = await res.json();
+      throw new Error(error.error || 'Failed to send message');
+    } else {
+      const text = await res.text();
+      throw new Error(text || 'Failed to send message');
+    }
+  }
+  if (contentType && contentType.includes("application/json")) {
+    return res.json();
+  } else {
+    return { error: 'Unexpected response from server' };
+  }
 }
 
 export async function getListingMessages(listingId: string) {
@@ -507,19 +528,6 @@ export async function resolveDispute(rentalId: string, data: { resolution: strin
   });
   return res.json();
 }
-// Admin: send message reply (to user in context of a listing)
-export async function sendMessageReply(listingId: string, toUserId: string, message: string) {
-  const token = localStorage.getItem("token");
-  const res = await fetch(`${API_BASE}/messages/${listingId}/reply`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify({ toUserId, message }),
-  });
-  return res.json();
-}
 
 // Admin: fetch all users
 export async function getAllUsers() {
@@ -561,7 +569,7 @@ export async function activateUser(userId: string) {
 // Admin: delete a user
 export async function deleteUser(userId: string) {
   const token = localStorage.getItem("token");
-  const res = await fetch(`${API_BASE}/users/${userId}`, {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
     method: "DELETE",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -627,4 +635,33 @@ export async function getAdminAnalytics() {
     }
   });
   return res.json();
+}
+
+// Direct user-to-user messaging (not tied to a listing)
+export async function sendUserMessage(toUserId: string, message: string) {
+  const token = localStorage.getItem("token");
+  const body = { toUserId, message };
+  const res = await fetch(`${API_BASE}/messages/user`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(body),
+  });
+  const contentType = res.headers.get("content-type");
+  if (!res.ok) {
+    if (contentType && contentType.includes("application/json")) {
+      const error = await res.json();
+      throw new Error(error.error || 'Failed to send message');
+    } else {
+      const text = await res.text();
+      throw new Error(text || 'Failed to send message');
+    }
+  }
+  if (contentType && contentType.includes("application/json")) {
+    return res.json();
+  } else {
+    return { error: 'Unexpected response from server' };
+  }
 }

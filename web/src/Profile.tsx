@@ -6,7 +6,7 @@ import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import { getListings, updateUser, updateRentalStatus, getUserReviews, getUserAverageRating, deleteListing } from "./api";
+import { getListings, updateUser, getUserReviews, getUserAverageRating, deleteListing } from "./api";
 import jwt_decode from "jwt-decode";
 import TextField from "@mui/material/TextField";
 import SaveIcon from "@mui/icons-material/Save";
@@ -19,6 +19,9 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import { useNavigate, useParams } from "react-router-dom";
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import Switch from '@mui/material/Switch';
 
 interface JwtPayload {
   userId?: string;
@@ -36,7 +39,7 @@ interface Listing {
   priceUnit?: string;
   location: string;
   owner: string;
-  available: boolean;
+  status: 'available' | 'pending approval' | 'unavailable';
 }
 
 interface Review {
@@ -63,7 +66,6 @@ const Profile: React.FC = () => {
   const [profilePic, setProfilePic] = useState<string | undefined>(undefined);
   const [location, setLocation] = useState<string>("");
   const [bio, setBio] = useState<string>("");
-  const [userStats] = useState<any>(null);
   const [tempName, setTempName] = useState("");
   const [tempLocation, setTempLocation] = useState("");
   const [tempProfilePic, setTempProfilePic] = useState<string | undefined>(undefined);
@@ -71,13 +73,13 @@ const Profile: React.FC = () => {
   const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
-  const [mapPosition, setMapPosition] = useState<[number, number] | null>(null);
   const [rentalHistory, setRentalHistory] = useState<any[]>([]);
   const [userReviews, setUserReviews] = useState<Review[]>([]);
   const [userAvgRating, setUserAvgRating] = useState<number | null>(null);
-  const [userRatingCount, setUserRatingCount] = useState<number>(0);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [listingToDelete, setListingToDelete] = useState<Listing | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  const [mapPosition, setMapPosition] = useState<[number, number] | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -126,13 +128,14 @@ const Profile: React.FC = () => {
       }));
       // Fetch user reviews and average rating
       const userRevs = await getUserReviews(uid!);
-      setUserReviews(userRevs);
+      setUserReviews(Array.isArray(userRevs) ? userRevs : []);
       const avgData = await getUserAverageRating(uid!);
       setUserAvgRating(avgData.avg);
-      setUserRatingCount(avgData.count);
       // Fetch rental history
       const rentals = await import('./api').then(api => api.getRentalHistory(uid!));
-      setRentalHistory(rentals);
+      setRentalHistory(Array.isArray(rentals) ? rentals : []);
+      setShowMap(!!userData.showMapLocation);
+      setMapPosition(userData.mapPosition || null);
       setLoading(false);
     }
     fetchProfile();
@@ -166,6 +169,8 @@ const Profile: React.FC = () => {
         location: tempLocation,
         profilePic: profilePicFile,
         bio: tempBio,
+        mapPosition,
+        showMapLocation: showMap,
       });
       setSaving(false);
       if (result && !result.error) {
@@ -173,6 +178,8 @@ const Profile: React.FC = () => {
         setLocation(result.location);
         setProfilePic(result.profilePic);
         setBio(result.bio || "");
+        setShowMap(!!result.showMapLocation);
+        setMapPosition(result.mapPosition || null);
         setEditMode(false);
         setProfilePicFile(null);
         setSaveMessage("Profile updated successfully!");
@@ -211,6 +218,17 @@ const Profile: React.FC = () => {
     } catch {}
   }
   const isOwnProfile = loggedInUserId && userId && loggedInUserId === userId;
+
+  const handleMapClick = (e: any) => {
+    if (!editMode) return;
+    setMapPosition([e.latlng.lat, e.latlng.lng]);
+  };
+
+  const handleToggleMap = async () => {
+    setShowMap((prev) => !prev);
+    // Optionally, update backend immediately
+    await updateUser(userId, { showMapLocation: !showMap });
+  };
 
   if (loading)
     return (
@@ -331,19 +349,19 @@ const Profile: React.FC = () => {
               <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
                 <Typography variant="subtitle2" color="#0a2342">Transactions</Typography>
                 <Button variant="text" color="primary" sx={{ fontWeight: 800, fontSize: 18, p: 0, minWidth: 0 }} onClick={() => navigate(`/profile/${routeUserId || userId}/transactions`)}>
-                  <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats?.successful ?? 0}</Typography>
+                  <Typography variant="h6" fontWeight={800} color="#0a2342">{rentalHistory.length}</Typography>
                 </Button>
               </Box>
               <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
                 <Typography variant="subtitle2" color="#0a2342">Disputes</Typography>
                 <Button variant="text" color="primary" sx={{ fontWeight: 800, fontSize: 18, p: 0, minWidth: 0 }} onClick={() => navigate(`/profile/${routeUserId || userId}/disputes`)}>
-                  <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats?.disputes ?? 0}</Typography>
+                  <Typography variant="h6" fontWeight={800} color="#0a2342">{rentalHistory.filter(r => r.dispute && r.dispute.status).length}</Typography>
                 </Button>
               </Box>
               <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
                 <Typography variant="subtitle2" color="#0a2342">Reviews</Typography>
                 <Button variant="text" color="primary" sx={{ fontWeight: 800, fontSize: 18, p: 0, minWidth: 0 }} onClick={() => navigate(`/profile/${routeUserId || userId}/reviews`)}>
-                  <Typography variant="h6" fontWeight={800} color="#0a2342">{userStats?.reviews ?? userRatingCount ?? 0}</Typography>
+                  <Typography variant="h6" fontWeight={800} color="#0a2342">{userReviews.length}</Typography>
                 </Button>
               </Box>
               <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
@@ -386,6 +404,36 @@ const Profile: React.FC = () => {
             <TextField label="Name" value={tempName} onChange={e => setTempName(e.target.value)} fullWidth required />
             <TextField label="Location" value={tempLocation} onChange={e => setTempLocation(e.target.value)} fullWidth />
             <TextField label="Bio" value={tempBio} onChange={e => setTempBio(e.target.value)} fullWidth multiline minRows={2} />
+            {/* Map location picker in edit mode */}
+            <Box display="flex" alignItems="center" gap={1}>
+              <Typography variant="subtitle2" color="#0a2342">Show Map Location</Typography>
+              <Switch checked={showMap} onChange={handleToggleMap} color="primary" />
+              <Typography variant="body2" color="text.secondary">{showMap ? 'Visible' : 'Hidden'}</Typography>
+            </Box>
+            {showMap && (
+              <Box sx={{ height: 220, width: '100%', borderRadius: 2, overflow: 'hidden', boxShadow: 1, mt: 1 }}>
+                <MapContainer
+                  center={mapPosition || [-24.6282, 25.9231]}
+                  zoom={mapPosition ? 13 : 7}
+                  style={{ height: '100%', width: '100' }}
+                  whenReady={() => {
+                    // Attach click event to map after it's ready
+                    // We'll use a ref or useMapEvents for more advanced cases
+                  }}
+                >
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution="&copy; OpenStreetMap contributors"
+                  />
+                  {mapPosition && <Marker position={mapPosition} />}
+                  {/* Only allow setting marker in edit mode */}
+                  {isOwnProfile && editMode && (
+                    <MapClickHandler setMapPosition={setMapPosition} editMode={editMode} />
+                  )}
+                </MapContainer>
+                <Typography variant="caption" color="text.secondary">Click on the map to set your location.</Typography>
+              </Box>
+            )}
             <Box display="flex" alignItems="center" gap={2}>
               <Button variant="contained" component="label" startIcon={<PhotoCamera />} sx={{ background: '#FF9800', color: '#fff', fontWeight: 700, borderRadius: 2, '&:hover': { background: '#fb8c00' } }}>
                 Upload Picture
@@ -430,6 +478,15 @@ const Profile: React.FC = () => {
         <Typography variant="h6" fontWeight={700} color="#0a2342" mb={2}>
           {name ? `${name}'s Listings` : "User's Listings"}
         </Typography>
+        {/* View Transaction History button */}
+        <Button
+          variant="outlined"
+          color="primary"
+          sx={{ mb: 2, fontWeight: 700, borderRadius: 2 }}
+          onClick={() => navigate(`/profile/${routeUserId || userId}/transactions`)}
+        >
+          View Transaction History
+        </Button>
         {listings.length === 0 ? (
           <Box sx={{ background: '#fff', borderRadius: 3, p: 3 }}>
             <Typography variant="body2" color="text.secondary">
@@ -459,14 +516,71 @@ const Profile: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">{listing.category}</Typography>
                   <Typography variant="body2" color="text.secondary">{listing.price} {listing.priceUnit ? `/ ${listing.priceUnit}` : ''}</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    {listing.available ? 'Available' : 'Not Available'}
+                    {listing.status === 'available' ? 'Available' : listing.status === 'pending approval' ? 'Pending Approval' : 'Unavailable'}
                   </Typography>
+                  {/* Edit/Delete buttons for own listings */}
+                  {isOwnProfile && (
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                      <Button
+                        variant="outlined"
+                        color="primary"
+                        size="small"
+                        onClick={() => navigate(`/edit-listing/${listing._id}`)}
+                        sx={{ fontWeight: 700, borderRadius: 2 }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        onClick={() => { setListingToDelete(listing); setDeleteDialogOpen(true); }}
+                        sx={{ fontWeight: 700, borderRadius: 2 }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               </Grid>
             ))}
           </Grid>
         )}
       </Box>
+      {/* Map Location Section */}
+      {(isOwnProfile || showMap) && (
+        <Box mt={3} mb={2}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Typography variant="subtitle1" fontWeight={700} color="#0a2342">Map Location</Typography>
+            {isOwnProfile && (
+              <Switch checked={showMap} onChange={handleToggleMap} color="primary" />
+            )}
+            <Typography variant="body2" color="text.secondary">{showMap ? 'Visible' : 'Hidden'}</Typography>
+          </Box>
+          {showMap && (
+            <Box sx={{ height: 260, width: '100%', borderRadius: 2, overflow: 'hidden', boxShadow: 1, mt: 1 }}>
+              <MapContainer
+                center={mapPosition || [-24.6282, 25.9231]}
+                zoom={mapPosition ? 13 : 7}
+                style={{ height: '100%', width: '100%' }}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution="&copy; OpenStreetMap contributors"
+                />
+                {mapPosition && <Marker position={mapPosition} />}
+                {/* Only allow setting marker in edit mode */}
+                {isOwnProfile && editMode && (
+                  <MapClickHandler setMapPosition={setMapPosition} editMode={editMode} />
+                )}
+              </MapContainer>
+              {isOwnProfile && editMode && (
+                <Typography variant="caption" color="text.secondary">Click on the map to set your location.</Typography>
+              )}
+            </Box>
+          )}
+        </Box>
+      )}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
         <DialogTitle>Delete Listing</DialogTitle>
         <DialogContent>
@@ -508,6 +622,17 @@ const Profile: React.FC = () => {
       </Dialog>
     </Box>
   );
+};
+
+const MapClickHandler = ({ setMapPosition, editMode }: { setMapPosition: React.Dispatch<React.SetStateAction<[number, number] | null>>, editMode: boolean }) => {
+  const map = useMapEvents({
+    click: (e) => {
+      if (editMode) {
+        setMapPosition([e.latlng.lat, e.latlng.lng]);
+      }
+    },
+  });
+  return null;
 };
 
 export default Profile;

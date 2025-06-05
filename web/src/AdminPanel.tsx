@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, Paper, Tabs, Tab, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert } from '@mui/material';
-import { getOpenDisputes, resolveDispute, getListingMessages, sendMessageReply, getAllUsers, suspendUser, activateUser, deleteUser, getAllListingsAdmin, deleteListingAdmin, getAllRentalsAdmin, updateRentalStatusAdmin, getAdminAnalytics } from './api';
+import { getOpenDisputes, resolveDispute, getListingMessages, sendListingMessage, getAllUsers, suspendUser, activateUser, deleteUser, getAllListingsAdmin, deleteListingAdmin, getAllRentalsAdmin, updateRentalStatusAdmin, getAdminAnalytics } from './api';
 
 const AdminPanel: React.FC = () => {
   const [tab, setTab] = React.useState(0);
@@ -131,7 +131,7 @@ const AdminPanel: React.FC = () => {
     setMessageError('');
     setMessageLoading(true);
     try {
-      await sendMessageReply(selectedDispute.listing._id, selectedDispute.renter._id, messageText);
+      await sendListingMessage(selectedDispute.listing._id, messageText);
       const msgs = await getListingMessages(selectedDispute.listing._id);
       setMessages(msgs || []);
       setMessageText('');
@@ -451,6 +451,10 @@ const AdminPanel: React.FC = () => {
                 <Paper sx={{ p: 3, minWidth: 220, textAlign: 'center', background: '#E8F5E9' }}>
                   <Typography variant="h5" fontWeight={800} color="#388E3C">{analytics.rentalCount}</Typography>
                   <Typography fontWeight={700}>Total Rentals</Typography>
+                </Paper>
+                <Paper sx={{ p: 3, minWidth: 220, textAlign: 'center', background: '#B3E5FC' }}>
+                  <Typography variant="h5" fontWeight={800} color="#0288D1">{analytics.availableRentals}</Typography>
+                  <Typography fontWeight={700}>Currently Available Rentals</Typography>
                 </Paper>
                 <Paper sx={{ p: 3, minWidth: 220, textAlign: 'center', background: '#F3E5F5' }}>
                   <Typography variant="h5" fontWeight={800} color="#8E24AA">{analytics.activeRentals}</Typography>

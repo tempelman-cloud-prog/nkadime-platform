@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { getMyRentalRequests, getIncomingRentalRequests, approveRentalRequest, declineRentalRequest, addRentalPayment, releaseEscrow, raiseDispute, exportRentalAudit } from "./api";
+import { getMyRentalRequests, getIncomingRentalRequests, approveRentalRequest, declineRentalRequest, addRentalPayment, releaseEscrow, raiseDispute, exportRentalAudit, updateRentalStatusWithAudit } from "./api";
 import { Link } from "react-router-dom";
 import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
@@ -12,7 +12,6 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import DescriptionIcon from '@mui/icons-material/Description';
 import GavelIcon from '@mui/icons-material/Gavel';
-import PaidIcon from '@mui/icons-material/Paid';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import Tooltip from '@mui/material/Tooltip';
@@ -27,10 +26,6 @@ import Grow from '@mui/material/Grow';
 import Chip from '@mui/material/Chip';
 import Avatar from '@mui/material/Avatar';
 import LinearProgress from '@mui/material/LinearProgress';
-import Stepper from '@mui/material/Stepper';
-import Step from '@mui/material/Step';
-import StepLabel from '@mui/material/StepLabel';
-import SearchIcon from '@mui/icons-material/Search';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import NoDataSvg from './NoDataSvg'; // You may need to create or replace with a suitable SVG/illustration
@@ -80,7 +75,17 @@ interface RentalRequest {
     evidenceUrl?: string;
   };
   createdAt: string;
+  startDate?: string;
+  endDate?: string;
   [key: string]: any;
+}
+
+// Helper to get ownerId from rental request (object or string)
+function getOwnerId(owner: any): string {
+  if (!owner) return '';
+  if (typeof owner === 'string') return owner;
+  if (typeof owner === 'object' && owner._id) return owner._id;
+  return '';
 }
 
 const MyRentals: React.FC = () => {
@@ -89,6 +94,7 @@ const MyRentals: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [completeLoading, setCompleteLoading] = useState<string | null>(null);
 
   const [escrowDialogOpen, setEscrowDialogOpen] = useState(false);
   const [escrowRental, setEscrowRental] = useState<RentalRequest | null>(null);
@@ -100,7 +106,6 @@ const MyRentals: React.FC = () => {
 
   // Add state for escrow release
   const [releaseLoading, setReleaseLoading] = useState<string | null>(null);
-  const [releaseError, setReleaseError] = useState<string | null>(null);
   const [confirmRelease, setConfirmRelease] = useState<string | null>(null);
 
   // Dispute modal state
@@ -215,18 +220,15 @@ const MyRentals: React.FC = () => {
   const handleReleaseEscrow = async (rentalId: string) => {
     setConfirmRelease(null);
     setReleaseLoading(rentalId);
-    setReleaseError(null);
     try {
       const result = await releaseEscrow(rentalId);
       if (result && !result.error) {
         fetchRequests();
         setSnackbar({ open: true, message: 'Escrow released successfully!', severity: 'success' });
       } else {
-        setReleaseError(result.error || "Failed to release escrow");
         setSnackbar({ open: true, message: result.error || 'Failed to release escrow', severity: 'error' });
       }
     } catch (err) {
-      setReleaseError("Network or server error. Please try again.");
       setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
     } finally {
       setReleaseLoading(null);
@@ -317,6 +319,8 @@ const MyRentals: React.FC = () => {
   // PDF view handler
   const handleViewPdf = async (rentalId: string) => {
     try {
+      setExportLoading(rentalId + 'pdf');
+      setExportError(null);
       const token = localStorage.getItem("token");
       const url = `/api/rentals/${rentalId}/export?format=pdf`;
       // Open in new tab with auth header via blob workaround
@@ -328,6 +332,8 @@ const MyRentals: React.FC = () => {
       setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 10000);
     } catch (err) {
       setExportError("Failed to open PDF");
+    } finally {
+      setExportLoading(null);
     }
   };
 
@@ -362,9 +368,78 @@ const MyRentals: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  // Filter for active/in-progress rentals only
+  const activeStatuses = ['pending', 'approved', 'paid', 'active', 'in-progress'];
+  const filteredMyRequests = myRequests.filter(r => activeStatuses.includes(r.status));
+  const filteredIncomingRequests = incomingRequests.filter(r => activeStatuses.includes(r.status));
+
+  // Helper: calculate rental days and late days
+  function getRentalInfo(req: RentalRequest) {
+    const start = req.startDate ? new Date(req.startDate) : null;
+    const end = req.endDate ? new Date(req.endDate) : null;
+    const now = new Date();
+    let days = 0, lateDays = 0, isLate = false;
+    if (start && end) {
+      days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      if (now > end && !["completed", "cancelled"].includes(req.status)) {
+        isLate = true;
+        lateDays = Math.ceil((now.getTime() - end.getTime()) / (1000 * 60 * 60 * 24));
+      }
+    }
+    return { start, end, days, isLate, lateDays };
+  }
+
+  const renderRentalInfo = (req: RentalRequest) => {
+    const { start, end, days, isLate, lateDays } = getRentalInfo(req);
+    const pricePerDay = req.listing.price || 0;
+    const basePrice = days * pricePerDay;
+    // Example late fee: 20% extra per late day
+    const lateFeePerDay = pricePerDay * 0.2;
+    const lateFee = isLate ? lateDays * lateFeePerDay : 0;
+    const total = basePrice + lateFee;
+    return (
+      <Box sx={{ fontSize: 14, color: '#555', mb: 1 }}>
+        <b>Rental Period:</b> {start ? start.toLocaleDateString() : '-'} to {end ? end.toLocaleDateString() : '-'} ({days} days)<br />
+        <b>Base Price:</b> ${basePrice.toFixed(2)} ({days} x ${pricePerDay.toFixed(2)}/day)<br />
+        {isLate && (
+          <span style={{ color: '#C62828', fontWeight: 600 }}>
+            <b>Late!</b> {lateDays} day(s) late. Late fee: ${lateFee.toFixed(2)}
+          </span>
+        )}
+        <br />
+        <b>Total Due:</b> ${total.toFixed(2)}
+      </Box>
+    );
+  };
+
+  // Handler: Mark as Completed
+  const handleMarkCompleted = async (rentalId: string) => {
+    setCompleteLoading(rentalId);
+    try {
+      const userId = getCurrentUserId();
+      const result = await updateRentalStatusWithAudit(rentalId, { status: "completed", userId });
+      if (result && !result.error) {
+        fetchRequests();
+        setSnackbar({ open: true, message: 'Rental marked as completed!', severity: 'success' });
+      } else {
+        setSnackbar({ open: true, message: result.error || 'Failed to mark as completed', severity: 'error' });
+      }
+    } catch {
+      setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
+    } finally {
+      setCompleteLoading(null);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 1000, margin: '2.5em auto', padding: '0 1em', fontFamily: 'Inter, Arial, sans-serif' }}>
       <h2 style={{ textAlign: 'center', color: '#FF9800', fontWeight: 800, marginBottom: '1.5em', letterSpacing: 1 }}>My Rental Activity</h2>
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <span style={{ fontSize: 16, color: '#1976D2' }}>
+          Looking for completed/cancelled rentals?{' '}
+          <Link to="/profile/transactions">View Transaction History</Link>
+        </span>
+      </div>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, justifyContent: 'space-between' }}>
         {/* Requests I Made */}
@@ -375,7 +450,7 @@ const MyRentals: React.FC = () => {
               <LinearProgress sx={{ width: '60%' }} aria-label="Loading your rental requests" />
             </Box>
           ) : (
-            myRequests.length === 0 ? (
+            filteredMyRequests.length === 0 ? (
               <Box sx={{ textAlign: 'center', color: '#888', py: 4 }}>
                 <NoDataSvg style={{ margin: '0 auto', display: 'block', maxWidth: 180 }} />
                 <div style={{ marginTop: 18, fontSize: 17, color: '#888', fontWeight: 500 }}>No requests made yet.</div>
@@ -383,11 +458,14 @@ const MyRentals: React.FC = () => {
             ) : (
               isMobile ? (
                 <Box>
-                  {myRequests.map(req => (
+                  {filteredMyRequests.map(req => (
                     <Box key={req._id} id={`rental-${req._id}`} sx={{ mb: 2, p: 2, borderRadius: 2, boxShadow: '0 2px 8px #0001', background: '#fff', border: '1px solid #eee', position: 'relative', transition: 'box-shadow 0.3s, border 0.3s', '&.highlight-rental-row': { boxShadow: '0 0 0 3px #FF9800', border: '2px solid #FF9800' } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <DescriptionIcon sx={{ color: '#FF9800', mr: 1 }} />
-                        <Link to={`/listing/${req.listing._id}`} style={{ fontWeight: 700, color: '#1976D2', fontSize: 17 }}>{req.listing.title}</Link>
+                        {/* Defensive: Requests I Made (mobile) */}
+                        <Link to={req.listing && req.listing._id ? `/listing/${req.listing._id}` : '#'} style={{ fontWeight: 700, color: '#1976D2', fontSize: 17, pointerEvents: req.listing && req.listing._id ? 'auto' : 'none', opacity: req.listing && req.listing._id ? 1 : 0.6 }}>
+                          {req.listing && req.listing.title ? req.listing.title : 'Listing deleted'}
+                        </Link>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Avatar sx={{ width: 28, height: 28, bgcolor: '#90caf9', fontSize: 15, mr: 1 }}>
@@ -427,6 +505,23 @@ const MyRentals: React.FC = () => {
                           <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
                         )}
                       </Box>
+                      {/* Rental period, price, and late info */}
+                      {renderRentalInfo(req)}
+                      {(["paid", "active", "in-progress"].includes(req.status) && ((req.owner?._id === userId) || (req.renter?._id === userId))) && (
+                        <Tooltip title="Mark as Completed">
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            sx={{ ml: 1, fontWeight: 700, borderRadius: 2, mt: 1 }}
+                            onClick={() => handleMarkCompleted(req._id)}
+                            disabled={completeLoading === req._id}
+                            aria-label="Mark as Completed"
+                          >
+                            <DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> {completeLoading === req._id ? 'Completing...' : 'Mark as Completed'}
+                          </Button>
+                        </Tooltip>
+                      )}
                     </Box>
                   ))}
                 </Box>
@@ -442,9 +537,15 @@ const MyRentals: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {myRequests.map(req => (
+                    {filteredMyRequests.map(req => (
                       <tr key={req._id} id={`rental-${req._id}`} style={{ borderBottom: '1px solid #eee', background: '#fff' }}>
-                        <td style={{ padding: 8 }}><Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link></td>
+                        <td style={{ padding: 8 }}>
+                          {req.listing && req.listing._id ? (
+                            <Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link>
+                          ) : (
+                            <span style={{ color: '#888' }}>Listing deleted</span>
+                          )}
+                        </td>
                         <td style={{ padding: 8 }}>{req.owner?.name || req.owner?.email || '-'}</td>
                         <td style={{ padding: 8 }}>
                           <span style={{
@@ -488,6 +589,29 @@ const MyRentals: React.FC = () => {
                             {exportError && (
                               <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
                             )}
+                            {/* Approve/Decline actions for pending requests, only for owner and not renter */}
+                            {req.status === 'pending' && getOwnerId(req.owner) === userId && req.renter?._id !== userId && (
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                <Tooltip title="Approve Request">
+                                  <button
+                                    style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
+                                    onClick={() => handleApprove(req._id)}
+                                    disabled={actionLoading === req._id}
+                                  >
+                                    {actionLoading === req._id ? 'Approving...' : 'Approve'}
+                                  </button>
+                                </Tooltip>
+                                <Tooltip title="Decline Request">
+                                  <button
+                                    style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
+                                    onClick={() => handleDecline(req._id)}
+                                    disabled={actionLoading === req._id}
+                                  >
+                                    {actionLoading === req._id ? 'Declining...' : 'Decline'}
+                                  </button>
+                                </Tooltip>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -506,18 +630,21 @@ const MyRentals: React.FC = () => {
               <LinearProgress sx={{ width: '60%' }} aria-label="Loading incoming rental requests" />
             </Box>
           ) : (
-            incomingRequests.length === 0 ? (
+            filteredIncomingRequests.length === 0 ? (
               <Box sx={{ textAlign: 'center', color: '#888', py: 4 }}>
                 <NoDataSvg style={{ margin: '0 auto', display: 'block', maxWidth: 180 }} />                <div style={{ marginTop: 18, fontSize: 17, color: '#888', fontWeight: 500 }}>No incoming requests yet.</div>
               </Box>
             ) : (
               isMobile ? (
                 <Box>
-                  {incomingRequests.map(req => (
+                  {filteredIncomingRequests.map(req => (
                     <Box key={req._id} id={`rental-${req._id}`} sx={{ mb: 2, p: 2, borderRadius: 2, boxShadow: '0 2px 8px #0001', background: '#fff', border: '1px solid #eee', position: 'relative', transition: 'box-shadow 0.3s, border 0.3s', '&.highlight-rental-row': { boxShadow: '0 0 0 3px #FF9800', border: '2px solid #FF9800' } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <DescriptionIcon sx={{ color: '#FF9800', mr: 1 }} />
-                        <Link to={`/listing/${req.listing._id}`} style={{ fontWeight: 700, color: '#1976D2', fontSize: 17 }}>{req.listing.title}</Link>
+                        {/* Defensive: Requests for My Listings (mobile) */}
+                        <Link to={req.listing && req.listing._id ? `/listing/${req.listing._id}` : '#'} style={{ fontWeight: 700, color: '#1976D2', fontSize: 17, pointerEvents: req.listing && req.listing._id ? 'auto' : 'none', opacity: req.listing && req.listing._id ? 1 : 0.6 }}>
+                          {req.listing && req.listing.title ? req.listing.title : 'Listing deleted'}
+                        </Link>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Avatar sx={{ width: 28, height: 28, bgcolor: '#90caf9', fontSize: 15, mr: 1 }}>
@@ -561,9 +688,9 @@ const MyRentals: React.FC = () => {
                         )}
                         {req.status === 'completed' && (
                           <Tooltip title="Escrow Released">
-                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Released</span>
-                          </Tooltip>
+                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Released</span></Tooltip>
                         )}
+                        {/* Only allow dispute for paid/active/in-progress/completed (not pending/approved) */}
                         {['paid', 'active', 'in-progress', 'completed'].includes(req.status) && !req.dispute && (
                           <Tooltip title="Raise Dispute">
                             <Button variant="contained" color="error" size="small" sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }} onClick={() => handleOpenDisputeDialog(req)} aria-label="Raise Dispute"><GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute</Button>
@@ -584,7 +711,47 @@ const MyRentals: React.FC = () => {
                         {exportError && (
                           <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
                         )}
+                        {/* Approve/Decline actions for pending requests, only for owner and not renter */}
+                        {req.status === 'pending' && getOwnerId(req.owner) === userId && req.renter?._id !== userId && (
+                          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                            <Tooltip title="Approve Request">
+                              <button
+                                style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
+                                onClick={() => handleApprove(req._id)}
+                                disabled={actionLoading === req._id}
+                              >
+                                {actionLoading === req._id ? 'Approving...' : 'Approve'}
+                              </button>
+                            </Tooltip>
+                            <Tooltip title="Decline Request">
+                              <button
+                                style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
+                                onClick={() => handleDecline(req._id)}
+                                disabled={actionLoading === req._id}
+                              >
+                                {actionLoading === req._id ? 'Declining...' : 'Decline'}
+                              </button>
+                            </Tooltip>
+                          </div>
+                        )}
                       </Box>
+                      {/* Rental period, price, and late info */}
+                      {renderRentalInfo(req)}
+                      {(["paid", "active", "in-progress"].includes(req.status) && ((req.owner?._id === userId) || (req.renter?._id === userId))) && (
+                        <Tooltip title="Mark as Completed">
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            sx={{ ml: 1, fontWeight: 700, borderRadius: 2, mt: 1 }}
+                            onClick={() => handleMarkCompleted(req._id)}
+                            disabled={completeLoading === req._id}
+                            aria-label="Mark as Completed"
+                          >
+                            <DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> {completeLoading === req._id ? 'Completing...' : 'Mark as Completed'}
+                          </Button>
+                        </Tooltip>
+                      )}
                     </Box>
                   ))}
                 </Box>
@@ -600,9 +767,15 @@ const MyRentals: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {incomingRequests.map(req => (
+                    {filteredIncomingRequests.map(req => (
                       <tr key={req._id} id={`rental-${req._id}`} style={{ borderBottom: '1px solid #eee', background: '#fff' }}>
-                        <td style={{ padding: 8 }}><Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link></td>
+                        <td style={{ padding: 8 }}>
+                          {req.listing && req.listing._id ? (
+                            <Link to={`/listing/${req.listing._id}`}>{req.listing.title}</Link>
+                          ) : (
+                            <span style={{ color: '#888' }}>Listing deleted</span>
+                          )}
+                        </td>
                         <td style={{ padding: 8 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Avatar sx={{ width: 28, height: 28, bgcolor: '#90caf9', fontSize: 15 }}>
@@ -629,34 +802,8 @@ const MyRentals: React.FC = () => {
                           )}
                           {req.status === 'paid' && (
                             <Tooltip title="Escrow Paid">
-                              <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center' }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Paid</span>
+                              <span style={{ color: '#388E3C', fontWeight: 700 }}>(Escrow Paid)</span>
                             </Tooltip>
-                          )}
-                          {req.status === 'paid' && req.owner?._id === userId && (
-                            <Tooltip title="Release Escrow">
-                              <button
-                                style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                                onClick={() => setConfirmRelease(req._id)}
-                                disabled={releaseLoading === req._id}
-                              >
-                                <HourglassBottomIcon sx={{ fontSize: 18, mr: 0.5 }} /> {releaseLoading === req._id ? 'Releasing...' : 'Release Escrow'}
-                              </button>
-                            </Tooltip>
-                          )}
-                          {req.status === 'completed' && (
-                            <Tooltip title="Escrow Released">
-                              <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center' }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Released</span>
-                            </Tooltip>
-                          )}
-                          {['paid', 'active', 'in-progress', 'completed'].includes(req.status) && !req.dispute && (
-                            <Tooltip title="Raise Dispute">
-                              <button style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleOpenDisputeDialog(req)}>
-                                <GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute
-                              </button>
-                            </Tooltip>
-                          )}
-                          {req.dispute && (
-                            <Tooltip title={`Dispute: ${req.dispute.status}`}><span style={{ color: '#C62828', fontWeight: 700, display: 'flex', alignItems: 'center' }}><GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute: {req.dispute.status}</span></Tooltip>
                           )}
                         </td>
                         <td style={{ padding: 8 }}>{new Date(req.createdAt).toLocaleString()}</td>
@@ -685,6 +832,29 @@ const MyRentals: React.FC = () => {
                             </Tooltip>
                             {exportError && (
                               <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
+                            )}
+                            {/* Approve/Decline actions for pending requests, only for owner and not renter */}
+                            {req.status === 'pending' && getOwnerId(req.owner) === userId && req.renter?._id !== userId && (
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                <Tooltip title="Approve Request">
+                                  <button
+                                    style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
+                                    onClick={() => handleApprove(req._id)}
+                                    disabled={actionLoading === req._id}
+                                  >
+                                    {actionLoading === req._id ? 'Approving...' : 'Approve'}
+                                  </button>
+                                </Tooltip>
+                                <Tooltip title="Decline Request">
+                                  <button
+                                    style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
+                                    onClick={() => handleDecline(req._id)}
+                                    disabled={actionLoading === req._id}
+                                  >
+                                    {actionLoading === req._id ? 'Declining...' : 'Decline'}
+                                  </button>
+                                </Tooltip>
+                              </div>
                             )}
                           </div>
                         </td>

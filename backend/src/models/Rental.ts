@@ -45,6 +45,7 @@ export interface IRental extends Document {
   };
   startDate: Date;
   endDate: Date;
+  lateFee?: number; // Add late fee property
   createdAt: Date;
   updatedAt: Date;
 }

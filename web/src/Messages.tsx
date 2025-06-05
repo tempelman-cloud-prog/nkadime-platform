@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getReceivedMessages, markMessagesRead, sendMessageReply, getListingMessages } from './api';
+import { getReceivedMessages, markMessagesRead, sendListingMessage, getListingMessages, sendUserMessage } from './api';
 import { Box, Typography, List, ListItem, ListItemAvatar, Avatar, ListItemText, Badge, Dialog, DialogTitle, DialogContent, TextField, Button, CircularProgress } from '@mui/material';
 
 const Messages: React.FC = () => {
@@ -18,7 +18,7 @@ const Messages: React.FC = () => {
 
   const fetchConversations = async () => {
     const msgs = await getReceivedMessages();
-    setConversations(msgs);
+    setConversations(Array.isArray(msgs) ? msgs : []);
   };
 
   const fetchThread = async (listingId: string, fromUserId: string) => {
@@ -75,7 +75,6 @@ const Messages: React.FC = () => {
     if (!reply.trim() || !selected) return;
     setReplyLoading(true);
     setReplyError('');
-    // Optimistically add the reply to the thread
     const token = localStorage.getItem('token');
     let currentUserId = '';
     let currentUserName = 'You';
@@ -98,14 +97,31 @@ const Messages: React.FC = () => {
     setThread(prev => [...prev, optimisticMsg]);
     setReply('');
     try {
-      const res = await sendMessageReply(selected.listing._id, selected.fromUser._id, reply);
+      let res: any;
+      // If this conversation is tied to a listing, always provide toUserId for replies
+      if (selected.listing && selected.listing._id) {
+        // Always set recipient to the other user in the conversation
+        const ownerId = selected.listing.owner?._id || selected.listing.owner;
+        // The other participant is the one who is NOT the current user
+        let recipientId = selected.fromUser._id;
+        if (currentUserId === selected.fromUser._id) {
+          recipientId = ownerId;
+        }
+        if (recipientId === currentUserId) {
+          setReplyError('You cannot message yourself.');
+          setThread(prev => prev.filter(m => m._id !== optimisticMsg._id));
+          setReplyLoading(false);
+          return;
+        }
+        res = await sendListingMessage(selected.listing._id, reply, recipientId);
+      } else {
+        res = await sendUserMessage(selected.fromUser._id, reply);
+      }
       if (res && !res.error) {
-        // Replace the optimistic message with the real one
         setThread(prev => prev.map(m => m._id === optimisticMsg._id ? res : m));
         fetchConversations();
       } else {
         setReplyError(res.error || 'Failed to send reply');
-        // Remove the optimistic message on error
         setThread(prev => prev.filter(m => m._id !== optimisticMsg._id));
       }
     } catch (e: any) {

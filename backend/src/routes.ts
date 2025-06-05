@@ -6,22 +6,25 @@ import {
   addFavorite, getFavorites,
   addReview, getReviews,
   createNotification, getNotifications,
-  getRentalHistory, createRentalRequest, updateRentalStatus,
+  getRentalHistory, createRentalRequest, /* updateRentalStatus, */
   getAverageRating, updateListing,
   addRentalMessage,
   addRentalPayment,
   addRentalReview,
   exportRentalAudit,
   updateRentalStatusWithAudit,
-  sendListingMessage, getListingMessages,
-  getReceivedListingMessages,
+  /* sendListingMessage, getListingMessages, */
   markNotificationAsRead, markAllNotificationsRead,
-  raiseDispute, resolveDispute, getOpenDisputes,
+  /* raiseDispute, resolveDispute, getOpenDisputes, */
   getMyRentalRequests, getIncomingRentalRequests,
-  approveRentalRequest, declineRentalRequest,  // replyToListingMessage,  // Removed: not implemented/exported
+  approveRentalRequest, declineRentalRequest,
   getAdmins, adminGetAllListings, adminDeleteListing,
   adminGetAllRentals, adminUpdateRentalStatus,
   adminGetAnalytics,
+  sendUserMessage,
+  /* getUnreadMessageCount, */
+  // resolveDispute, // Removed: not exported
+  // raiseDispute, // Uncomment if implemented
 } from './models/controllers';
 import multer from 'multer';
 import path from 'path';
@@ -115,24 +118,22 @@ router.post('/rentals/:rentalId/payment', authenticateToken, addRentalPayment);
 router.post('/rentals/:rentalId/review', authenticateToken, addRentalReview);
 router.get('/rentals/:rentalId/export', authenticateToken, exportRentalAudit);
 router.patch('/rentals/:rentalId/status-audit', authenticateToken, updateRentalStatusWithAudit);
-router.patch('/rentals/:rentalId/status', authenticateToken, updateRentalStatus); // legacy/simple
+// router.patch('/rentals/:rentalId/status', authenticateToken, updateRentalStatus); // legacy/simple
 // Release escrow after rental completion (owner action)
 // router.post('/rentals/:rentalId/release-escrow', authenticateToken, releaseEscrow); // Removed: releaseEscrow is not implemented
 
 // Pre-rental messaging routes
-router.post('/listings/:id/messages', authenticateToken, sendListingMessage);
-router.get('/listings/:id/messages', authenticateToken, getListingMessages);
-// Fetch all messages received by a user (as toUser)
-router.get('/messages/received', authenticateToken, getReceivedListingMessages);
-// Mark all messages from a user for a listing as read (when opening conversation)
-router.post('/messages/:listingId/mark-read', authenticateToken, (req, res, next) => {
-  import('./models/controllers').then(mod => mod.markListingMessagesRead(req, res)).catch(next);
-});
+// router.post('/listings/:id/messages', authenticateToken, sendListingMessage);
+// router.get('/listings/:id/messages', authenticateToken, getListingMessages);
+// Direct user-to-user messaging (not tied to a listing)
+router.post('/messages/user', authenticateToken, sendUserMessage);
+// Fetch unread message count for navbar badge
+// router.get('/messages/unread-count', authenticateToken, getUnreadMessageCount);
 
-// Dispute routes
-router.post('/rentals/:rentalId/dispute', authenticateToken, raiseDispute);
-router.post('/rentals/:rentalId/dispute/resolve', authenticateToken, resolveDispute);
-router.get('/disputes/open', authenticateToken, getOpenDisputes);
+// router.post('/rentals/:rentalId/dispute', authenticateToken, raiseDispute); // Removed: raiseDispute is not implemented/exported
+// router.post('/rentals/:rentalId/dispute/resolve', authenticateToken, resolveDispute); // Removed: resolveDispute is not exported
+// router.get('/disputes/open', authenticateToken, getOpenDisputes); // Removed: getOpenDisputes is not defined
+// router.get('/disputes/open', authenticateToken, getOpenDisputes); // Removed: getOpenDisputes is not defined
 
 // MyRentals workflow routes
 // Get rental requests made by the current user (as renter)
@@ -166,9 +167,9 @@ router.patch('/admin/rentals/:id/status', authenticateToken, adminUpdateRentalSt
 // Activate a user (admin only)
 // router.patch('/users/:id/activate', authenticateToken, activateUser); // Removed: activateUser is not implemented/exported
 // Delete a user (admin only)
-// router.delete('/users/:id', authenticateToken, (req, res, next) => {
-//   import('./models/controllers').then(mod => mod.deleteUser(req, res)).catch(next);
-// });
+router.delete('/admin/users/:id', authenticateToken, (req, res, next) => {
+  import('./models/controllers').then(mod => mod.adminDeleteUser(req, res)).catch(next);
+});
 
 // Admin analytics route
 router.get('/admin/analytics', authenticateToken, adminGetAnalytics);

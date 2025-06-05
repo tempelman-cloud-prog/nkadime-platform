@@ -3,6 +3,7 @@ import type { Multer } from 'multer';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 // Removed duplicate import of Request
+const LATE_FEE_RATE = 50; // $50 per day late
 
 // User Registration
 export const register = async (req: Request, res: Response) => {
@@ -63,6 +64,7 @@ import { Request, Response } from 'express';
 import { User, Listing, Favorite, Review, Notification, Rental } from './index';
 import mongoose from 'mongoose';
 import ListingMessage from './ListingMessage';
+import { UserMessage } from './index';
 
 interface MulterRequest extends Request {
   files?: Express.Multer.File[];
@@ -103,6 +105,28 @@ export const updateUser = async (req: Request, res: Response) => {
     if (req.file) {
       updateData.profilePic = '/uploads/' + req.file.filename;
     }
+    // Add support for mapPosition and showMapLocation
+    if (req.body.mapPosition) {
+      // Accepts JSON string or array
+      let pos = req.body.mapPosition;
+      if (typeof pos === 'string') {
+        try {
+          pos = JSON.parse(pos);
+        } catch {}
+      }
+      if (Array.isArray(pos) && pos.length === 2 && pos.every((n) => typeof n === 'number')) {
+        updateData.mapPosition = pos;
+      } else if (pos === null) {
+        updateData.mapPosition = null;
+      }
+    }
+    if (typeof req.body.showMapLocation !== 'undefined') {
+      if (typeof req.body.showMapLocation === 'string') {
+        updateData.showMapLocation = req.body.showMapLocation === 'true';
+      } else {
+        updateData.showMapLocation = !!req.body.showMapLocation;
+      }
+    }
     // If no fields to update, return error
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: 'No update data provided' });
@@ -116,7 +140,9 @@ export const updateUser = async (req: Request, res: Response) => {
       email: user.email,
       location: user.location,
       profilePic: user.profilePic,
-      bio: user.bio
+      bio: user.bio,
+      mapPosition: user.mapPosition,
+      showMapLocation: user.showMapLocation
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -213,13 +239,21 @@ export const updateListing = async (req: MulterRequest, res: Response) => {
 export const deleteListing = async (req: Request, res: Response) => {
   try {
     const listingId = req.params.id;
+    // Check for in-progress rentals
+    const inProgressRental = await Rental.findOne({
+      listing: listingId,
+      status: { $nin: ['completed', 'cancelled', 'declined'] }
+    });
+    if (inProgressRental) {
+      return res.status(400).json({ error: 'Cannot delete listing: there are active or pending rentals. Please cancel or complete all rentals first.' });
+    }
     const listing = await Listing.findByIdAndDelete(listingId);
     if (!listing) return res.status(404).json({ error: 'Listing not found' });
     // Optionally: remove associated favorites, reviews, notifications, etc.
     res.json({ success: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
+    const deleteListingErrorMsg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: deleteListingErrorMsg });
   }
 };
 
@@ -423,8 +457,8 @@ export const createRentalRequest = async (req: Request, res: Response) => {
       statusHistory: [{ status: 'pending', by: renter, at: new Date() }]
     });
     await rental.save();
-    // Mark the listing as unavailable (pending)
-    await Listing.findByIdAndUpdate(listing, { available: false });
+    // Set listing status to 'pending approval' on request
+    await Listing.findByIdAndUpdate(listing, { status: 'pending approval' });
     // Notify the owner of the new rental request
     await Notification.create({
       user: owner,
@@ -459,6 +493,7 @@ export const getIncomingRentalRequests = async (req: Request, res: Response) => 
     const rentals = await Rental.find({ owner: userId })
       .populate('listing')
       .populate('renter', 'email name')
+      .populate('owner', 'email name') // Ensure owner is populated
       .sort({ createdAt: -1 });
     res.json(rentals);
   } catch (err) {
@@ -472,23 +507,37 @@ export const approveRentalRequest = async (req: Request, res: Response) => {
   try {
     const { rentalId } = req.params;
     const userId = (req as any).user?.userId;
-    const rental = await Rental.findByIdAndUpdate(
+    // Fetch the rental to check owner/renter
+    const rental = await Rental.findById(rentalId).populate('listing').populate('renter', 'email name').populate('owner', 'email name');
+    if (!rental) return res.status(404).json({ error: 'Rental not found' });
+    // Prevent user from approving their own request (renter cannot approve their own request)
+    // rental.renter and rental.owner may be ObjectId or populated object
+    const renterId = rental.renter && typeof rental.renter === 'object' && 'id' in rental.renter ? rental.renter.id : rental.renter?.toString();
+    const ownerId = rental.owner && typeof rental.owner === 'object' && 'id' in rental.owner ? rental.owner.id : rental.owner?.toString();
+    if (renterId === userId) {
+      return res.status(403).json({ error: 'You cannot approve your own rental request.' });
+    }
+    if (ownerId !== userId) {
+      return res.status(403).json({ error: 'Only the listing owner can approve this request.' });
+    }
+    // Now update status
+    const updatedRental = await Rental.findByIdAndUpdate(
       rentalId,
       { status: 'approved', $push: { statusHistory: { status: 'approved', by: userId, at: new Date() } } },
       { new: true }
     ).populate('listing').populate('renter', 'email name').populate('owner', 'email name');
-    if (!rental) return res.status(404).json({ error: 'Rental not found' });
-    // Mark the listing as unavailable (rented)
-    if (rental.listing && typeof rental.listing === 'object' && '_id' in rental.listing) {
-      await Listing.findByIdAndUpdate((rental.listing as any)._id, { available: false });
+    if (!updatedRental) return res.status(404).json({ error: 'Rental not found after update' });
+    // Set listing status to 'unavailable' immediately upon approval
+    if (updatedRental.listing && typeof updatedRental.listing === 'object' && '_id' in updatedRental.listing) {
+      await Listing.findByIdAndUpdate((updatedRental.listing as any)._id, { status: 'unavailable' });
     }
     await Notification.create({
-      user: rental.renter && typeof rental.renter === 'object' && '_id' in rental.renter ? (rental.renter as any)._id : rental.renter,
+      user: updatedRental.renter && typeof updatedRental.renter === 'object' && '_id' in updatedRental.renter ? (updatedRental.renter as any)._id : updatedRental.renter,
       type: 'rental_status',
-      message: `Your rental request for '${(rental.listing && typeof rental.listing === 'object' && 'title' in rental.listing) ? (rental.listing as any).title : ''}' was approved.`,
-      data: { rental: rental._id, listing: (rental.listing && typeof rental.listing === 'object' && '_id' in rental.listing) ? (rental.listing as any)._id : rental.listing, status: 'approved' }
+      message: `Your rental request for '${(updatedRental.listing && typeof updatedRental.listing === 'object' && 'title' in updatedRental.listing) ? (updatedRental.listing as any).title : ''}' was approved.`,
+      data: { rental: updatedRental._id, listing: (updatedRental.listing && typeof updatedRental.listing === 'object' && '_id' in updatedRental.listing) ? (updatedRental.listing as any)._id : updatedRental.listing, status: 'approved' }
     });
-    res.json(rental);
+    res.json(updatedRental);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });
@@ -506,14 +555,14 @@ export const declineRentalRequest = async (req: Request, res: Response) => {
       { new: true }
     ).populate('listing').populate('renter', 'email name').populate('owner', 'email name');
     if (!rental) return res.status(404).json({ error: 'Rental not found' });
-    // If declined, mark the listing as available again
+    // Set listing status to 'available' on decline
     if (rental.listing && typeof rental.listing === 'object' && '_id' in rental.listing) {
-      await Listing.findByIdAndUpdate((rental.listing as any)._id, { available: true });
+      await Listing.findByIdAndUpdate((rental.listing as any)._id, { status: 'available' });
     }
     await Notification.create({
       user: rental.renter && typeof rental.renter === 'object' && '_id' in rental.renter ? (rental.renter as any)._id : rental.renter,
       type: 'rental_status',
-      message: `Your rental request for '${(rental.listing && typeof rental.listing === 'object' && 'title' in rental.listing) ? (rental.listing as any).title : ''}' was declined.`,
+      message: `Your rental request for '${(rental.listing && typeof rental.listing === 'object' && 'title' in rental.listing) ? (rental.listing as any).title : ''}' was declined. We regret to inform you of this decision. Please contact support if you believe this is an error.`,
       data: { rental: rental._id, listing: (rental.listing && typeof rental.listing === 'object' && '_id' in rental.listing) ? (rental.listing as any)._id : rental.listing, status: 'declined' }
     });
     res.json(rental);
@@ -522,41 +571,16 @@ export const declineRentalRequest = async (req: Request, res: Response) => {
     res.status(400).json({ error: message });
   }
 };
-// Approve or decline a rental request (owner action)
-export const updateRentalStatus = async (req: Request, res: Response) => {
+
+// Get rental details (for admin or owner/renter)
+export const getRentalDetails = async (req: Request, res: Response) => {
   try {
-    const { rentalId } = req.params;
-    const { status } = req.body;
-    if (!['approved', 'declined', 'active', 'completed', 'cancelled'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-    const rental = await Rental.findByIdAndUpdate(
-      rentalId,
-      { status },
-      { new: true }
-    ).populate('listing').populate('renter', 'name profilePic').populate('owner', 'name profilePic');
+    const rentalId = req.params.id;
+    const rental = await Rental.findById(rentalId)
+      .populate('listing')
+      .populate('renter', 'name profilePic')
+      .populate('owner', 'name profilePic');
     if (!rental) return res.status(404).json({ error: 'Rental not found' });
-    // --- Notification: Notify renter of approval/decline ---
-    if (status === 'approved' || status === 'declined') {
-      let listingTitle = '';
-      if (rental.listing && typeof rental.listing === 'object' && 'title' in rental.listing && typeof (rental.listing as any).title === 'string') {
-        listingTitle = (rental.listing as any).title;
-      } else {
-        listingTitle = 'your listing';
-      }
-      const listingId = rental.listing instanceof mongoose.Types.ObjectId
-        ? rental.listing.toString()
-        : ((rental.listing as any)?._id ?? rental.listing);
-      await Notification.create({
-        // @ts-ignore
-        user: typeof rental.renter === 'object' && rental.renter !== null && '_id' in rental.renter
-          ? (rental.renter as any)._id
-          : rental.renter,
-        type: 'rental_status',
-        message: `Your rental request for '${listingTitle}' was ${status}.`,
-        data: { rental: rental._id, listing: listingId, status }
-      });
-    }
     res.json(rental);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -564,23 +588,15 @@ export const updateRentalStatus = async (req: Request, res: Response) => {
   }
 };
 
-// Add message/evidence to a rental
-export const addRentalMessage = async (req: Request, res: Response) => {
+// Update rental details (admin or owner)
+export const updateRentalDetails = async (req: Request, res: Response) => {
   try {
-    const { rentalId } = req.params;
-    const { message, evidenceUrl, userId } = req.body;
-    if (!message && !evidenceUrl) {
-      return res.status(400).json({ error: 'Message or evidence required' });
-    }
-    const update: any = {};
-    if (message) {
-      update.$push = { messages: { from: userId, message, at: new Date() } };
-    }
-    if (evidenceUrl) {
-      if (!update.$push) update.$push = {};
-      update.$push.evidence = { url: evidenceUrl, uploadedBy: userId, at: new Date() };
-    }
-    const rental = await Rental.findByIdAndUpdate(rentalId, update, { new: true });
+    const rentalId = req.params.id;
+    const updateData: any = req.body;
+    const rental = await Rental.findByIdAndUpdate(rentalId, updateData, { new: true })
+      .populate('listing')
+      .populate('renter', 'name profilePic')
+      .populate('owner', 'name profilePic');
     if (!rental) return res.status(404).json({ error: 'Rental not found' });
     res.json(rental);
   } catch (err) {
@@ -609,7 +625,10 @@ export const addRentalPayment = async (req: Request, res: Response) => {
       { new: true }
     ).populate('owner', 'name email').populate('renter', 'name email').populate('listing', 'title');
     if (!rental) return res.status(404).json({ error: 'Rental not found' });
-
+    // Set listing status to 'unavailable' on payment
+    if (rental.listing && typeof rental.listing === 'object' && '_id' in rental.listing) {
+      await Listing.findByIdAndUpdate((rental.listing as any)._id, { status: 'unavailable' });
+    }
     // Create notifications for both owner and renter
     const Notification = (await import('./Notification')).default;
     // Get owner and renter IDs
@@ -796,7 +815,38 @@ export const updateRentalStatusWithAudit = async (req: Request, res: Response) =
     rental.status = status;
     rental.statusHistory.push({ status, by: userId, at: new Date(), note });
     await rental.save();
-    // --- Notification: Notify renter of approval/decline ---
+    // Handle late returns if status is 'completed'
+    if (status === 'completed') {
+      const currentDate = new Date();
+      if (currentDate > new Date(rental.endDate)) {
+        const daysLate = (currentDate.getTime() - new Date(rental.endDate).getTime()) / (1000 * 60 * 60 * 24);
+        const lateFee = daysLate * LATE_FEE_RATE; // Example: $LATE_FEE_RATE per day late
+        rental.lateFee = lateFee;
+        // Add late fee to rental and notify both parties
+        // Send notifications with clear, user-friendly messages
+        await Notification.create({
+          user: rental.owner,
+          type: 'late_fee',
+          message: `Your rental has a late return fee of $${lateFee} applied. Please ensure the equipment is returned promptly.`,
+          data: { rental: rental._id, lateFee }
+        });
+        await Notification.create({
+          user: rental.renter,
+          type: 'late_fee',
+          message: `A late fee of $${lateFee} has been applied to your rental. Please return the equipment by the due date to avoid further charges.`,
+          data: { rental: rental._id, lateFee }
+        });
+        // Log the late fee for audit purposes (if needed)
+        console.log(`Late fee of $${lateFee} applied for rental ${rental._id} due to late return.`);
+      }
+    }
+    // Set listing status to 'available' on completion or cancellation
+    if (['completed', 'cancelled'].includes(status)) {
+      if (rental.listing && typeof rental.listing === 'object' && '_id' in rental.listing) {
+        await Listing.findByIdAndUpdate((rental.listing as any)._id, { status: 'available' });
+      }
+    }
+    // Enhance notifications for approval and decline to improve user experience
     if (['approved', 'declined'].includes(status)) {
       let listingTitle = '';
       if (rental.listing && typeof rental.listing === 'object' && 'title' in rental.listing && typeof (rental.listing as any).title === 'string') {
@@ -811,7 +861,7 @@ export const updateRentalStatusWithAudit = async (req: Request, res: Response) =
       await Notification.create({
         user: rental.renter,
         type: 'rental_status',
-        message: `Your rental request for '${listingTitle}' was ${status}.`,
+        message: `Your rental request for '${listingTitle}' was ${status}. ${status === 'approved' ? 'The rental is now active. Enjoy your experience!' : 'We regret to inform you that your request was declined. Please contact support for details.'}`,
         data: { rental: rental._id, listing: listingId, status }
       });
     }
@@ -822,210 +872,25 @@ export const updateRentalStatusWithAudit = async (req: Request, res: Response) =
   }
 };
 
-// Pre-rental messaging: send a message to the listing owner
-export const sendListingMessage = async (req: Request, res: Response) => {
-  try {
-    const listingId = req.params.id;
-    const { message } = req.body;
-    const userId = (req as any).user?.userId || req.body.userId; // from auth middleware or body
-    if (!message) return res.status(400).json({ error: 'Message is required' });
-    // Find listing and owner
-    const listing = await Listing.findById(listingId);
-    if (!listing) return res.status(404).json({ error: 'Listing not found' });
-    if (!userId) return res.status(401).json({ error: 'User not authenticated' });
-    // Don't allow owner to message themselves
-    if (String(listing.owner) === String(userId)) {
-      return res.status(400).json({ error: 'You cannot message yourself about your own listing.' });
-    }
-    const msg = new ListingMessage({
-      listing: listingId,
-      fromUser: userId,
-      toUser: listing.owner,
-      message,
-      createdAt: new Date(),
-      read: false
-    });
-    await msg.save();
-    res.status(201).json(msg);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Pre-rental messaging: get all messages for a listing
-export const getListingMessages = async (req: Request, res: Response) => {
-  try {
-    const listingId = req.params.id;
-    const userId = (req as any).user?.userId || req.query.userId;
-    // Only allow owner or users who have messaged to see messages
-    const listing = await Listing.findById(listingId);
-    if (!listing) return res
-    if (!userId) return res.status(401).json({ error: 'User not authenticated' });
-    // Mark all messages to this user for this listing as read
-    await ListingMessage.updateMany({ listing: listingId, toUser: userId, read: { $ne: true } }, { $set: { read: true } });
-    // Fetch messages where user is owner or fromUser
-    const messages = await ListingMessage.find({
-      listing: listingId,
-      $or: [
-        { fromUser: userId },
-        { toUser: userId },
-      ],
-    })
-      .sort({ createdAt: 1 })
-      .populate('fromUser', 'name email profilePic')
-      .populate('toUser', 'name email profilePic');
-    res.json(messages);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Fetch all messages received by a user (as toUser) - only latest per (fromUser, listing), add unread count logic
-export const getReceivedListingMessages = async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user?.userId || req.params.userId;
-    if (!userId) return res.status(401).json({ error: 'User not authenticated' });
-    // Get only the latest message per (fromUser, listing)
-    const pipeline = [
-      { $match: { toUser: typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId } },
-      { $sort: { createdAt: -1 as 1 | -1 } },
-      { $group: {
-        _id: { fromUser: "$fromUser", listing: "$listing" },
-        doc: { $first: "$$ROOT" },
-        unreadCount: {
-          $sum: { $cond: [ { $eq: [ "$read", false ] }, 1, 0 ] }
-        }
-      }},
-      { $replaceRoot: { newRoot: { $mergeObjects: [ "$doc", { unreadCount: "$unreadCount" } ] } } },
-      { $sort: { createdAt: -1 as 1 | -1 } }
-    ];
-    const messages = await ListingMessage.aggregate(pipeline);
-    // Populate fromUser and listing fields
-    await ListingMessage.populate(messages, [
-      { path: 'fromUser', select: 'name email profilePic' },
-      { path: 'listing', select: 'title' }
-    ]);
-    res.json(messages);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Mark all messages from a user for a listing as read (when opening conversation)
-export const markListingMessagesRead = async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user?.userId;
-    const { listingId, fromUserId } = req.body;
-    if (!userId || !listingId || !fromUserId) return res.status(400).json({ error: 'Missing params' });
-    await ListingMessage.updateMany(
-      { toUser: userId, listing: listingId, fromUser: fromUserId, read: { $ne: true } },
-      { $set: { read: true } }
-    );
-    res.json({ success: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Get unread message count for navbar badge
-export const getUnreadMessageCount = async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ error: 'User not authenticated' });
-    const count = await ListingMessage.countDocuments({ toUser: userId, read: { $ne: true } });
-    res.json({ count });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Raise a dispute on a rental
-export const raiseDispute = async (req: Request, res: Response) => {
+// Add message/evidence to a rental
+export const addRentalMessage = async (req: Request, res: Response) => {
   try {
     const { rentalId } = req.params;
-    const { reason, evidenceUrl } = req.body;
-    const userId = (req as any).user?.userId || req.body.userId;
-    if (!reason) return res.status(400).json({ error: 'Reason is required' });
-    const rental = await Rental.findById(rentalId);
+    const { message, evidenceUrl, userId } = req.body;
+    if (!message && !evidenceUrl) {
+      return res.status(400).json({ error: 'Message or evidence required' });
+    }
+    const update: any = {};
+    if (message) {
+      update.$push = { messages: { from: userId, message, at: new Date() } };
+    }
+    if (evidenceUrl) {
+      if (!update.$push) update.$push = {};
+      update.$push.evidence = { url: evidenceUrl, uploadedBy: userId, at: new Date() };
+    }
+    const rental = await Rental.findByIdAndUpdate(rentalId, update, { new: true });
     if (!rental) return res.status(404).json({ error: 'Rental not found' });
-    // Only owner or renter can raise dispute
-    if (String(rental.owner) !== String(userId) && String(rental.renter) !== String(userId)) {
-      return res.status(403).json({ error: 'Not authorized to dispute this rental' });
-    }
-    rental.dispute = {
-      raisedBy: userId,
-      reason,
-      evidenceUrl,
-      status: 'open',
-      raisedAt: new Date(),
-    };
-    rental.status = 'disputed';
-    await rental.save();
-    // Notify admin (all admins)
-    const admins = await User.find({ isAdmin: true });
-    for (const admin of admins) {
-      await Notification.create({
-        user: admin._id,
-        type: 'dispute_raised',
-        message: `A dispute was raised for rental ${rental._id}.`,
-        data: { rental: rental._id }
-      });
-    }
-    res.json({ success: true, rental });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Admin: resolve a dispute
-export const resolveDispute = async (req: Request, res: Response) => {
-  try {
-    const { rentalId } = req.params;
-    const { resolution, status } = req.body;
-    const userId = (req as any).user?.userId;
-    const user = await User.findById(userId);
-    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
-    const rental = await Rental.findById(rentalId);
-    if (!rental || !rental.dispute) return res.status(404).json({ error: 'Dispute not found' });
-    rental.dispute.status = status;
-    rental.dispute.resolution = resolution;
-    rental.dispute.resolvedBy = userId;
-    rental.dispute.resolvedAt = new Date();
-    await rental.save();
-    // Notify involved parties
-    for (const party of [rental.owner, rental.renter]) {
-      await Notification.create({
-        user: party,
-        type: 'dispute_resolved',
-        message: `Dispute for rental ${rental._id} was ${status}.`,
-        data: { rental: rental._id, status, resolution }
-      });
-    }
-    res.json({ success: true, rental });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Admin: fetch all open disputes
-export const getOpenDisputes = async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user?.userId;
-    const user = await User.findById(userId);
-    if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
-    const disputes = await Rental.find({ 'dispute.status': 'open' })
-      .populate('listing')
-      .populate('owner', 'name email')
-      .populate('renter', 'name email')
-      .lean();
-    res.json({ disputes });
+    res.json(rental);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });
@@ -1047,7 +912,7 @@ export const adminGetAllUsers = async (req: Request, res: Response) => {
   }
 };
 
-// Get all admins
+// Admin: Get all admins
 export const getAdmins = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
@@ -1082,6 +947,14 @@ export const adminDeleteListing = async (req: Request, res: Response) => {
     const user = await User.findById(userId);
     if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
     const listingId = req.params.id;
+    // Check for in-progress rentals
+    const inProgressRental = await Rental.findOne({
+      listing: listingId,
+      status: { $nin: ['completed', 'cancelled', 'declined'] }
+    });
+    if (inProgressRental) {
+      return res.status(400).json({ error: 'Cannot delete listing: there are active or pending rentals. Please cancel or complete all rentals first.' });
+    }
     const listing = await Listing.findByIdAndDelete(listingId);
     if (!listing) return res.status(404).json({ error: 'Listing not found' });
     // Optionally: remove associated favorites, reviews, notifications, etc.
@@ -1101,9 +974,12 @@ export const adminGetAnalytics = async (req: Request, res: Response) => {
     const userCount = await User.countDocuments();
     const listingCount = await Listing.countDocuments();
     const rentalCount = await Rental.countDocuments();
+    // Rentals currently available: not completed, cancelled, or declined
+    const availableRentalStatuses = ['pending', 'approved', 'paid', 'active', 'in-progress'];
+    const availableRentals = await Rental.countDocuments({ status: { $in: availableRentalStatuses } });
     const activeRentals = await Rental.countDocuments({ status: { $in: ['active', 'in-progress'] } });
     const completedRentals = await Rental.countDocuments({ status: 'completed' });
-    res.json({ userCount, listingCount, rentalCount, activeRentals, completedRentals });
+    res.json({ userCount, listingCount, rentalCount, availableRentals, activeRentals, completedRentals });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });
@@ -1134,9 +1010,65 @@ export const adminUpdateRentalStatus = async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
     const user = await User.findById(userId);
     if (!user || !user.isAdmin) return res.status(403).json({ error: 'Admin only' });
-    // Use the same logic as updateRentalStatus
+    // Use the same logic as updateRentalStatusWithAudit
     req.body.adminOverride = true;
-    return updateRentalStatus(req, res);
+    return updateRentalStatusWithAudit(req, res);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Direct user-to-user messaging (not tied to a listing)
+export const sendUserMessage = async (req: Request, res: Response) => {
+  try {
+    const fromUser = (req as any).user?.userId;
+    const { toUserId, message } = req.body;
+    if (!fromUser) return res.status(401).json({ error: 'User not authenticated' });
+    if (!toUserId || !message) return res.status(400).json({ error: 'Recipient and message required' });
+    if (String(fromUser) === String(toUserId)) {
+      return res.status(400).json({ error: 'You cannot message yourself.' });
+    }
+    // Optionally: check if recipient exists
+    const recipient = await User.findById(toUserId);
+    if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
+    const msg = new UserMessage({
+      fromUser,
+      toUser: toUserId,
+      message,
+      createdAt: new Date(),
+    });
+    await msg.save();
+    res.status(201).json(msg);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Admin: Delete a user and all their listings (except admin)
+export const adminDeleteUser = async (req: Request, res: Response) => {
+  try {
+    const adminId = (req as any).user?.userId;
+    const adminUser = await User.findById(adminId);
+    if (!adminUser || !adminUser.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    const userId = req.params.id;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.isAdmin) {
+      return res.status(400).json({ error: 'Cannot delete admin user' });
+    }
+    // Delete user and their listings, rentals, reviews, favorites, notifications, messages
+    await Promise.all([
+      User.findByIdAndDelete(userId),
+      Listing.deleteMany({ owner: userId }),
+      Rental.deleteMany({ $or: [{ renter: userId }, { owner: userId }] }),
+      Review.deleteMany({ $or: [{ reviewer: userId }, { reviewedUser: userId }] }),
+      Favorite.deleteMany({ user: userId }),
+      Notification.deleteMany({ user: userId }),
+      UserMessage.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] })
+    ]);
+    res.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });

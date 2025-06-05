@@ -30,6 +30,14 @@ const CreateListingForm: React.FC = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // Add a generic handler for textarea and select
+  const handleTextAreaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setImageError("");
     if (e.target.files) {
@@ -107,44 +115,114 @@ const CreateListingForm: React.FC = () => {
 
   return (
     <form className="modern-card" onSubmit={handleSubmit} encType="multipart/form-data" style={{
-      maxWidth: 480,
-      margin: '32px auto',
-      background: '#fff',
-      borderRadius: 16,
-      boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
-      padding: 32,
+      maxWidth: 520,
+      margin: '40px auto',
+      background: 'linear-gradient(120deg, #fff 60%, #FFF3E0 100%)',
+      borderRadius: 22,
+      boxShadow: '0 8px 32px rgba(255,152,0,0.10)',
+      padding: 40,
       display: 'flex',
       flexDirection: 'column',
-      gap: 16
+      gap: 22,
+      border: '1.5px solid #FFECB3',
+      position: 'relative',
     }}>
-      <h2 style={{ textAlign: 'center', color: '#FF9800', fontWeight: 800, marginBottom: 16 }}>Create Listing</h2>
-      <input name="title" placeholder="Title" value={form.title} onChange={handleChange} required style={{ padding: 16, borderRadius: 14, border: '2px solid #e0e0e0', fontSize: 19, marginBottom: 6, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} />
-      <input name="description" placeholder="Description" value={form.description} onChange={handleChange} required style={{ padding: 16, borderRadius: 14, border: '2px solid #e0e0e0', fontSize: 19, marginBottom: 6, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} />
-      <input name="category" placeholder="Category" value={form.category} onChange={handleChange} required style={{ padding: 16, borderRadius: 14, border: '2px solid #e0e0e0', fontSize: 19, marginBottom: 6, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} />
-      <input name="price" type="number" placeholder="Price" value={form.price} onChange={handleChange} required style={{ padding: 16, borderRadius: 14, border: '2px solid #e0e0e0', fontSize: 19, marginBottom: 6, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} />
-      <input name="location" placeholder="Location" value={form.location} onChange={handleChange} required style={{ padding: 16, borderRadius: 14, border: '2px solid #e0e0e0', fontSize: 19, marginBottom: 6, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} />
-      <input name="images" type="file" multiple accept="image/*" onChange={handleImageChange} style={{ marginTop: 8, marginBottom: 6 }} />
-      {imageError && <div style={{ color: 'red', marginBottom: 12 }}>{imageError}</div>}
-      <div style={{ display: 'flex', gap: 16, margin: '12px 0' }}>
-        {imagePreviews.map((src, idx) => (
-          <img key={idx} src={src} alt="preview" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 14, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', border: '2px solid #eee', transition: 'box-shadow 0.2s' }} />
-        ))}
+      <h2 style={{ textAlign: 'center', color: '#FF9800', fontWeight: 900, marginBottom: 18, letterSpacing: 1, fontSize: 32 }}>Create a New Listing</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <label style={{ fontWeight: 700, color: '#333', marginBottom: 2 }}>Title</label>
+        <input name="title" placeholder="e.g. Power Drill, Camera, Generator" value={form.title} onChange={handleChange} required style={{ padding: 15, borderRadius: 12, border: '2px solid #ffe0b2', fontSize: 18, outline: 'none', boxShadow: '0 2px 8px #ffecb31a', background: '#FFFDE7', fontWeight: 500 }} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <label style={{ fontWeight: 700, color: '#333', marginBottom: 2 }}>Description</label>
+        <textarea name="description" placeholder="Describe your equipment, features, and condition..." value={form.description} onChange={handleTextAreaChange} required rows={3} style={{ padding: 15, borderRadius: 12, border: '2px solid #ffe0b2', fontSize: 17, outline: 'none', boxShadow: '0 2px 8px #ffecb31a', background: '#FFFDE7', fontWeight: 500, resize: 'vertical' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontWeight: 700, color: '#333', marginBottom: 2 }}>Category</label>
+          <input name="category" placeholder="e.g. Tools, Electronics" value={form.category} onChange={handleChange} required style={{ padding: 13, borderRadius: 10, border: '2px solid #ffe0b2', fontSize: 17, outline: 'none', background: '#FFFDE7', fontWeight: 500 }} />
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontWeight: 700, color: '#333', marginBottom: 2 }}>Location</label>
+          <input name="location" placeholder="e.g. Nairobi, Westlands" value={form.location} onChange={handleChange} required style={{ padding: 13, borderRadius: 10, border: '2px solid #ffe0b2', fontSize: 17, outline: 'none', background: '#FFFDE7', fontWeight: 500 }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontWeight: 700, color: '#333', marginBottom: 2 }}>Price</label>
+          <input name="price" type="number" min={0} placeholder="e.g. 500" value={form.price} onChange={handleChange} required style={{ padding: 13, borderRadius: 10, border: '2px solid #ffe0b2', fontSize: 17, outline: 'none', background: '#FFFDE7', fontWeight: 500 }} />
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontWeight: 700, color: '#333', marginBottom: 2 }}>Price Unit</label>
+          <select name="priceUnit" value={form.priceUnit} onChange={handleSelectChange} style={{ padding: 13, borderRadius: 10, border: '2px solid #ffe0b2', fontSize: 17, outline: 'none', background: '#FFFDE7', fontWeight: 500 }}>
+            <option value="hour">Per Hour</option>
+            <option value="day">Per Day</option>
+            <option value="week">Per Week</option>
+          </select>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <label style={{ fontWeight: 700, color: '#333', marginBottom: 2 }}>Equipment Images</label>
+        <div style={{
+          border: '2.5px dashed #FFB74D',
+          borderRadius: 16,
+          background: '#FFF8E1',
+          padding: 18,
+          textAlign: 'center',
+          marginBottom: 8,
+          position: 'relative',
+          minHeight: 120,
+        }}>
+          <input
+            name="images"
+            type="file"
+            multiple
+            accept="image/*"
+            onChange={handleImageChange}
+            style={{
+              opacity: 0,
+              width: '100%',
+              height: 120,
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              cursor: 'pointer',
+              zIndex: 2,
+            }}
+            aria-label="Upload equipment images"
+          />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <span style={{ color: '#FF9800', fontWeight: 700, fontSize: 18 }}>
+              Click or drag to upload clear images of your equipment
+            </span>
+            <div style={{ color: '#888', fontSize: 14, marginTop: 4 }}>
+              (Max 5MB per image, JPG/PNG preferred)
+            </div>
+          </div>
+        </div>
+        {imageError && <div style={{ color: 'red', marginBottom: 12 }}>{imageError}</div>}
+        <div style={{ display: 'flex', gap: 16, margin: '12px 0', flexWrap: 'wrap' }}>
+          {imagePreviews.map((src, idx) => (
+            <div key={idx} style={{ position: 'relative', width: 110, height: 110, borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 16px #ffb74d33', border: '2px solid #FFECB3', background: '#fff' }}>
+              <img src={src} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }} />
+            </div>
+          ))}
+        </div>
       </div>
       <button type="submit" disabled={submitting} style={{
         background: 'linear-gradient(90deg, #FF9800 0%, #FFB74D 100%)',
         color: '#fff',
         border: 'none',
-        borderRadius: 10,
-        padding: '12px 30px',
-        fontWeight: 700,
-        fontSize: 19,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+        borderRadius: 12,
+        padding: '15px 0',
+        fontWeight: 800,
+        fontSize: 21,
+        boxShadow: '0 2px 8px #ffb74d33',
         cursor: submitting ? 'not-allowed' : 'pointer',
         marginTop: 10,
         transition: 'background 0.2s, box-shadow 0.2s',
         letterSpacing: 0.5,
-      }}>{submitting ? "Creating..." : "Create"}</button>
-      <div style={{ minHeight: 24, color: message.includes('error') ? 'red' : '#333', marginTop: 8, textAlign: 'center', fontSize: 15 }}>{message}</div>
+      }}>{submitting ? "Creating..." : "Create Listing"}</button>
+      <div style={{ minHeight: 24, color: message.includes('error') ? 'red' : '#388E3C', marginTop: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 }}>{message}</div>
     </form>
   );
 };

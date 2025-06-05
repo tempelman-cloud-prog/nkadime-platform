@@ -30,7 +30,7 @@ const ProfileTransactions: React.FC = () => {
       setError("");
       try {
         const data = await getRentalHistory(userId!);
-        setRentals(data || []);
+        setRentals(Array.isArray(data) ? data : (data && Array.isArray(data.rentals) ? data.rentals : []));
       } catch (e) {
         setError("Failed to load transactions.");
       } finally {
@@ -58,7 +58,7 @@ const ProfileTransactions: React.FC = () => {
           {rentals.map((r) => (
             <Paper key={r._id} sx={{ p: 2, mb: 2, borderRadius: 2, boxShadow: 1 }}>
               <Typography fontWeight={600}>
-                Listing: {typeof r.listing === "object" ? r.listing.title : r.listing}
+                Listing: {r.listing && typeof r.listing === "object" ? r.listing.title : r.listing ? r.listing : "Listing deleted"}
               </Typography>
               <Typography>
                 Owner: {typeof r.owner === "object" ? r.owner.name : r.owner}

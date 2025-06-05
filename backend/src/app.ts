@@ -28,6 +28,21 @@ app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 // Routes
 app.use('/api', routes);
 
+// 404 handler for API routes
+app.use('/api', (req: express.Request, res: express.Response) => {
+  console.log('404 API route not found:', req.method, req.originalUrl);
+  res.status(404).json({ error: 'API route not found' });
+});
+
+// Global error handler for API routes
+app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error(err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal Server Error',
+    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
 // Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);

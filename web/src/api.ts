@@ -492,18 +492,7 @@ export async function getUserStats(userId: string) {
   return res.json();
 }
 
-// Release escrow after rental completion (owner action)
-export async function releaseEscrow(rentalId: string) {
-  const token = localStorage.getItem("token");
-  const res = await fetch(`${API_BASE}/rentals/${rentalId}/release-escrow`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    }
-  });
-  return res.json();
-}
+
 
 // Admin: fetch all open disputes
 export async function getOpenDisputes() {

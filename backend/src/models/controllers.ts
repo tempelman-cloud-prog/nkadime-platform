@@ -619,6 +619,7 @@ export const addRentalPayment = async (req: Request, res: Response) => {
       rentalId,
       {
         payment: { amount, method, reference, paidAt: paidAt ? new Date(paidAt) : new Date() },
+        amount, // <-- Set top-level amount for transaction compatibility
         status: 'paid',
         $push: { statusHistory: { status: 'paid', by: userId, at: new Date(), note: 'Escrow payment made' } }
       },

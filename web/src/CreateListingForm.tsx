@@ -204,6 +204,35 @@ const CreateListingForm: React.FC = () => {
           {imagePreviews.map((src, idx) => (
             <div key={idx} style={{ position: 'relative', width: 110, height: 110, borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 16px #ffb74d33', border: '2px solid #FFECB3', background: '#fff' }}>
               <img src={src} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }} />
+              <button
+                type="button"
+                onClick={() => {
+                  const newImages = images.filter((_, i) => i !== idx);
+                  const newPreviews = imagePreviews.filter((_, i) => i !== idx);
+                  setImages(newImages);
+                  setImagePreviews(newPreviews);
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 4,
+                  background: '#fff',
+                  color: '#C62828',
+                  border: '1.5px solid #C62828',
+                  borderRadius: '50%',
+                  width: 26,
+                  height: 26,
+                  fontWeight: 900,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px #0002',
+                  zIndex: 3,
+                }}
+                aria-label="Remove image"
+                title="Remove image"
+              >
+                ×
+              </button>
             </div>
           ))}
         </div>

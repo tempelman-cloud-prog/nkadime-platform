@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { getMyRentalRequests, getIncomingRentalRequests, approveRentalRequest, declineRentalRequest, addRentalPayment, releaseEscrow, raiseDispute, exportRentalAudit, updateRentalStatusWithAudit } from "./api";
+import { getMyRentalRequests, getIncomingRentalRequests, approveRentalRequest, declineRentalRequest, addRentalPayment, raiseDispute, exportRentalAudit, updateRentalStatusWithAudit } from "./api";
 import { Link } from "react-router-dom";
 import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
@@ -11,9 +11,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import DescriptionIcon from '@mui/icons-material/Description';
-import GavelIcon from '@mui/icons-material/Gavel';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
-import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import Tooltip from '@mui/material/Tooltip';
 import InputAdornment from '@mui/material/InputAdornment';
 import IconButton from '@mui/material/IconButton';
@@ -96,17 +94,14 @@ const MyRentals: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [completeLoading, setCompleteLoading] = useState<string | null>(null);
 
-  const [escrowDialogOpen, setEscrowDialogOpen] = useState(false);
-  const [escrowRental, setEscrowRental] = useState<RentalRequest | null>(null);
-  const [escrowAmount, setEscrowAmount] = useState("");
-  const [escrowMethod, setEscrowMethod] = useState("");
-  const [escrowReference, setEscrowReference] = useState("");
-  const [escrowError, setEscrowError] = useState("");
-  const [escrowLoading, setEscrowLoading] = useState(false);
-
-  // Add state for escrow release
-  const [releaseLoading, setReleaseLoading] = useState<string | null>(null);
-  const [confirmRelease, setConfirmRelease] = useState<string | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentRental, setPaymentRental] = useState<RentalRequest | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [confirmPayment, setConfirmPayment] = useState(false);
 
   // Dispute modal state
   const [disputeDialogOpen, setDisputeDialogOpen] = useState(false);
@@ -117,6 +112,7 @@ const MyRentals: React.FC = () => {
   const [disputeFileUrl, setDisputeFileUrl] = useState<string>("");
   const [disputeError, setDisputeError] = useState("");
   const [disputeLoading, setDisputeLoading] = useState(false);
+  const [confirmDispute, setConfirmDispute] = useState(false);
 
   // Export/printable summary state
   const [exportLoading, setExportLoading] = useState<string | null>(null);
@@ -124,10 +120,8 @@ const MyRentals: React.FC = () => {
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
-  const [confirmEscrow, setConfirmEscrow] = useState(false);
-  const [confirmDispute, setConfirmDispute] = useState(false);
 
-  const escrowDialogRef = useRef<HTMLDivElement>(null);
+  const paymentDialogRef = useRef<HTMLDivElement>(null);
   const disputeDialogRef = useRef<HTMLDivElement>(null);
 
   const fetchRequests = async () => {
@@ -172,66 +166,47 @@ const MyRentals: React.FC = () => {
     }
   };
 
-  const handleOpenEscrowDialog = (rental: RentalRequest) => {
-    setEscrowRental(rental);
-    setEscrowAmount(rental.listing.price ? String(rental.listing.price) : "");
-    setEscrowMethod("");
-    setEscrowReference("");
-    setEscrowError("");
-    setEscrowDialogOpen(true);
+  const handleOpenPaymentDialog = (rental: RentalRequest) => {
+    setPaymentRental(rental);
+    setPaymentAmount(rental.listing.price ? String(rental.listing.price) : "");
+    setPaymentMethod("Card"); // Default to Card
+    setPaymentReference("");
+    setPaymentError("");
+    setPaymentDialogOpen(true);
   };
-  const handleCloseEscrowDialog = () => {
-    setEscrowDialogOpen(false);
-    setEscrowRental(null);
-    setEscrowError("");
+  const handleClosePaymentDialog = () => {
+    setPaymentDialogOpen(false);
+    setPaymentRental(null);
+    setPaymentError("");
   };
-  const handleEscrowPayment = async () => {
-    if (!escrowRental) return;
-    if (!escrowAmount || !escrowMethod || !escrowReference) {
-      setEscrowError("All fields are required.");
+  const handlePayment = async () => {
+    if (!paymentRental) return;
+    if (!paymentAmount || !paymentMethod || !paymentReference) {
+      setPaymentError("All fields are required.");
       return;
     }
-    setConfirmEscrow(false);
-    setEscrowLoading(true);
-    setEscrowError("");
+    setConfirmPayment(false);
+    setPaymentLoading(true);
+    setPaymentError("");
     try {
-      const result = await addRentalPayment(escrowRental._id, {
-        amount: Number(escrowAmount),
-        method: escrowMethod,
-        reference: escrowReference,
+      const result = await addRentalPayment(paymentRental._id, {
+        amount: Number(paymentAmount),
+        method: paymentMethod,
+        reference: paymentReference,
       });
       if (result && !result.error) {
         fetchRequests();
-        setEscrowDialogOpen(false);
-        setSnackbar({ open: true, message: 'Escrow payment successful!', severity: 'success' });
+        setPaymentDialogOpen(false);
+        setSnackbar({ open: true, message: 'Payment successful!', severity: 'success' });
       } else {
-        setEscrowError(result.error || "Failed to process payment");
+        setPaymentError(result.error || "Failed to process payment");
         setSnackbar({ open: true, message: result.error || 'Failed to process payment', severity: 'error' });
       }
-    } catch (err) {
-      setEscrowError("Network or server error. Please try again.");
+    } catch {
+      setPaymentError("Network or server error. Please try again.");
       setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
     } finally {
-      setEscrowLoading(false);
-    }
-  };
-
-  // Handler for releasing escrow (owner action)
-  const handleReleaseEscrow = async (rentalId: string) => {
-    setConfirmRelease(null);
-    setReleaseLoading(rentalId);
-    try {
-      const result = await releaseEscrow(rentalId);
-      if (result && !result.error) {
-        fetchRequests();
-        setSnackbar({ open: true, message: 'Escrow released successfully!', severity: 'success' });
-      } else {
-        setSnackbar({ open: true, message: result.error || 'Failed to release escrow', severity: 'error' });
-      }
-    } catch (err) {
-      setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
-    } finally {
-      setReleaseLoading(null);
+      setPaymentLoading(false);
     }
   };
 
@@ -248,6 +223,9 @@ const MyRentals: React.FC = () => {
     setDisputeDialogOpen(false);
     setDisputeRental(null);
     setDisputeError("");
+  };
+  const handleDisputeSubmit = () => {
+    setConfirmDispute(true);
   };
   const handleRaiseDispute = async () => {
     if (!disputeRental) return;
@@ -354,10 +332,10 @@ const MyRentals: React.FC = () => {
   }, [myRequests, incomingRequests]);
 
   useEffect(() => {
-    if (escrowDialogOpen && escrowDialogRef.current) {
-      escrowDialogRef.current.focus();
+    if (paymentDialogOpen && paymentDialogRef.current) {
+      paymentDialogRef.current.focus();
     }
-  }, [escrowDialogOpen]);
+  }, [paymentDialogOpen]);
   useEffect(() => {
     if (disputeDialogOpen && disputeDialogRef.current) {
       disputeDialogRef.current.focus();
@@ -433,11 +411,12 @@ const MyRentals: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1000, margin: '2.5em auto', padding: '0 1em', fontFamily: 'Inter, Arial, sans-serif' }}>
+      {/* --- TRANSACTION FLOW START --- */}
       <h2 style={{ textAlign: 'center', color: '#FF9800', fontWeight: 800, marginBottom: '1.5em', letterSpacing: 1 }}>My Rental Activity</h2>
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
         <span style={{ fontSize: 16, color: '#1976D2' }}>
           Looking for completed/cancelled rentals?{' '}
-          <Link to="/profile/transactions">View Transaction History</Link>
+          <Link to={`/profile/${userId}/transactions`}>View Transaction History</Link>
         </span>
       </div>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -445,6 +424,7 @@ const MyRentals: React.FC = () => {
         {/* Requests I Made */}
         <section style={{ flex: 1, minWidth: 340, background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 24, marginBottom: 32 }}>
           <h3 style={{ color: '#FF9800', fontWeight: 700, marginBottom: 18, letterSpacing: 0.5 }}>Requests I Made</h3>
+          {/* --- TRANSACTION FLOW: REQUEST TO RENT (START) --- */}
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 120 }}>
               <LinearProgress sx={{ width: '60%' }} aria-label="Loading your rental requests" />
@@ -482,15 +462,19 @@ const MyRentals: React.FC = () => {
                           sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
                           aria-label={`Status: ${req.status}`}
                         />
-                        {req.status === 'approved' && !req.payment && (
-                          <Tooltip title="Pay Escrow">
-                            <Button variant="contained" color="warning" size="small" sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }} onClick={() => handleOpenEscrowDialog(req)} aria-label="Pay Escrow">Pay Escrow</Button>
-                          </Tooltip>
+                        {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                          <Button
+                            variant="contained"
+                            color="warning"
+                            size="small"
+                            sx={{ ml: 1, fontWeight: 700, borderRadius: 2, display: 'inline-block', verticalAlign: 'middle' }}
+                            onClick={() => handleOpenPaymentDialog(req)}
+                          >
+                            Pay
+                          </Button>
                         )}
                         {req.status === 'paid' && (
-                          <Tooltip title="Escrow Paid">
-                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Paid</span>
-                          </Tooltip>
+                          <span style={{ marginLeft: 12, color: '#388E3C', fontWeight: 700 }}>(Payment Completed)</span>
                         )}
                       </Box>
                       <Box sx={{ fontSize: 14, color: '#888', mb: 1 }}>
@@ -553,13 +537,19 @@ const MyRentals: React.FC = () => {
                             color: req.status === 'pending' ? '#FF9800' : req.status === 'approved' ? '#388E3C' : '#C62828',
                             borderRadius: 8, padding: '4px 14px', fontWeight: 700, fontSize: 15
                           }}>{req.status.charAt(0).toUpperCase() + req.status.slice(1)}</span>
-                          {req.status === 'approved' && !req.payment && (
-                            <button style={{ marginLeft: 12, background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer' }} onClick={() => handleOpenEscrowDialog(req)}>
-                              Pay Escrow
-                            </button>
+                          {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                            <Button
+                              variant="contained"
+                              color="warning"
+                              size="small"
+                              sx={{ ml: 1, fontWeight: 700, borderRadius: 2, display: 'inline-block', verticalAlign: 'middle' }}
+                              onClick={() => handleOpenPaymentDialog(req)}
+                            >
+                              Pay
+                            </Button>
                           )}
                           {req.status === 'paid' && (
-                            <span style={{ marginLeft: 12, color: '#388E3C', fontWeight: 700 }}>(Escrow Paid)</span>
+                            <span style={{ marginLeft: 12, color: '#388E3C', fontWeight: 700 }}>(Payment Completed)</span>
                           )}
                         </td>
                         <td style={{ padding: 8 }}>{new Date(req.createdAt).toLocaleString()}</td>
@@ -621,10 +611,12 @@ const MyRentals: React.FC = () => {
               )
             )
           )}
+          {/* --- TRANSACTION FLOW: REQUEST TO RENT (END) --- */}
         </section>
         {/* Requests for My Listings */}
         <section style={{ flex: 1, minWidth: 340, background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 24, marginBottom: 32 }}>
           <h3 style={{ color: '#FF9800', fontWeight: 700, marginBottom: 18, letterSpacing: 0.5 }}>Requests for My Listings</h3>
+          {/* --- TRANSACTION FLOW: OWNER ACTIONS (START) --- */}
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 120 }}>
               <LinearProgress sx={{ width: '60%' }} aria-label="Loading incoming rental requests" />
@@ -661,43 +653,24 @@ const MyRentals: React.FC = () => {
                           sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
                           aria-label={`Status: ${req.status}`}
                         />
-                        {req.status === 'approved' && !req.payment && (
-                          <Tooltip title="Pay Escrow">
-                            <Button variant="contained" color="warning" size="small" sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }} onClick={() => handleOpenEscrowDialog(req)} aria-label="Pay Escrow">Pay Escrow</Button>
-                          </Tooltip>
-                        )}
-                        {req.status === 'paid' && (
-                          <Tooltip title="Escrow Paid">
-                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Paid</span>
-                          </Tooltip>
-                        )}
-                        {req.status === 'paid' && req.owner?._id === userId && (
-                          <Tooltip title="Release Escrow">
+                        {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                          <Tooltip title="Pay">
                             <Button
                               variant="contained"
-                              color="success"
+                              color="warning"
                               size="small"
-                              sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }}
-                              onClick={() => setConfirmRelease(req._id)}
-                              disabled={releaseLoading === req._id}
-                              aria-label="Release Escrow"
+                              sx={{ ml: 1, fontWeight: 700, borderRadius: 2, display: 'inline-block', verticalAlign: 'middle' }}
+                              onClick={() => handleOpenPaymentDialog(req)}
+                              aria-label="Pay"
                             >
-                              <HourglassBottomIcon sx={{ fontSize: 18, mr: 0.5 }} /> {releaseLoading === req._id ? 'Releasing...' : 'Release Escrow'}
+                              Pay
                             </Button>
                           </Tooltip>
                         )}
-                        {req.status === 'completed' && (
-                          <Tooltip title="Escrow Released">
-                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Escrow Released</span></Tooltip>
-                        )}
-                        {/* Only allow dispute for paid/active/in-progress/completed (not pending/approved) */}
-                        {['paid', 'active', 'in-progress', 'completed'].includes(req.status) && !req.dispute && (
-                          <Tooltip title="Raise Dispute">
-                            <Button variant="contained" color="error" size="small" sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }} onClick={() => handleOpenDisputeDialog(req)} aria-label="Raise Dispute"><GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute</Button>
+                        {req.status === 'paid' && (
+                          <Tooltip title="Payment Completed">
+                            <span style={{ color: '#388E3C', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> Paid</span>
                           </Tooltip>
-                        )}
-                        {req.dispute && (
-                          <Tooltip title={`Dispute: ${req.dispute.status}`}><span style={{ color: '#C62828', fontWeight: 700, display: 'flex', alignItems: 'center', marginLeft: 8 }}><GavelIcon sx={{ fontSize: 18, mr: 0.5 }} /> Dispute: {req.dispute.status}</span></Tooltip>
                         )}
                       </Box>
                       <Box sx={{ fontSize: 14, color: '#888', mb: 1 }}>
@@ -735,23 +708,6 @@ const MyRentals: React.FC = () => {
                           </div>
                         )}
                       </Box>
-                      {/* Rental period, price, and late info */}
-                      {renderRentalInfo(req)}
-                      {(["paid", "active", "in-progress"].includes(req.status) && ((req.owner?._id === userId) || (req.renter?._id === userId))) && (
-                        <Tooltip title="Mark as Completed">
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            size="small"
-                            sx={{ ml: 1, fontWeight: 700, borderRadius: 2, mt: 1 }}
-                            onClick={() => handleMarkCompleted(req._id)}
-                            disabled={completeLoading === req._id}
-                            aria-label="Mark as Completed"
-                          >
-                            <DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> {completeLoading === req._id ? 'Completing...' : 'Mark as Completed'}
-                          </Button>
-                        </Tooltip>
-                      )}
                     </Box>
                   ))}
                 </Box>
@@ -793,16 +749,20 @@ const MyRentals: React.FC = () => {
                             sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
                             aria-label={`Status: ${req.status}`}
                           />
-                          {req.status === 'approved' && !req.payment && (
-                            <Tooltip title="Pay Escrow">
-                              <button style={{ marginLeft: 12, background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer' }} onClick={() => handleOpenEscrowDialog(req)}>
-                                Pay Escrow
-                              </button>
-                            </Tooltip>
+                          {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                            <Button
+                              variant="contained"
+                              color="warning"
+                              size="small"
+                              sx={{ ml: 1, fontWeight: 700, borderRadius: 2 }}
+                              onClick={() => handleOpenPaymentDialog(req)}
+                            >
+                              Pay
+                            </Button>
                           )}
                           {req.status === 'paid' && (
-                            <Tooltip title="Escrow Paid">
-                              <span style={{ color: '#388E3C', fontWeight: 700 }}>(Escrow Paid)</span>
+                            <Tooltip title="Payment Completed">
+                              <span style={{ color: '#388E3C', fontWeight: 700 }}>(Payment Completed)</span>
                             </Tooltip>
                           )}
                         </td>
@@ -865,39 +825,54 @@ const MyRentals: React.FC = () => {
               )
             )
           )}
+          {/* --- TRANSACTION FLOW: OWNER ACTIONS (END) --- */}
         </section>
       </div>
-      {/* Escrow Payment Dialog */}
-      <Dialog open={escrowDialogOpen} onClose={handleCloseEscrowDialog} PaperProps={{ sx: { borderRadius: 3, minWidth: 350 } }} TransitionComponent={Grow}>
-        <div ref={escrowDialogRef} tabIndex={-1} />
-        <DialogTitle sx={{ fontWeight: 700, color: '#FF9800', fontSize: 22, letterSpacing: 0.5, pb: 0 }}>Pay Escrow</DialogTitle>
+      {/* --- TRANSACTION FLOW END --- */}
+      {/* Payment Dialog */}
+      <Dialog open={paymentDialogOpen} onClose={handleClosePaymentDialog} PaperProps={{ sx: { borderRadius: 3, minWidth: 350 } }} TransitionComponent={Grow}>
+        <div ref={paymentDialogRef} tabIndex={-1} />
+        <DialogTitle sx={{ fontWeight: 700, color: '#FF9800', fontSize: 22, letterSpacing: 0.5, pb: 0 }}>Pay for Rental</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <div style={{ marginBottom: 16, fontSize: 16, color: '#333' }}>
-            <b>Listing:</b> <span style={{ color: '#1976D2', fontWeight: 600 }}>{escrowRental?.listing?.title}</span><br />
-            <b>Amount:</b> <TextField size="small" type="number" value={escrowAmount} onChange={e => setEscrowAmount(e.target.value)} sx={{ width: 120, ml: 1, background: '#FFFDE7', borderRadius: 1, fontWeight: 700 }} inputProps={{ min: 0, style: { fontWeight: 700 } }} />
+            <b>Listing:</b> <span style={{ color: '#1976D2', fontWeight: 600 }}>{paymentRental?.listing?.title}</span><br />
+            <b>Amount:</b> <TextField size="small" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} sx={{ width: 120, ml: 1, background: '#FFFDE7', borderRadius: 1, fontWeight: 700 }} inputProps={{ min: 0, style: { fontWeight: 700 } }} />
           </div>
-          <TextField label="Payment Method" size="small" fullWidth value={escrowMethod} onChange={e => setEscrowMethod(e.target.value)} sx={{ mb: 2, background: '#F5F5F5', borderRadius: 1 }} inputProps={{ maxLength: 32 }} />
-          <TextField label="Reference" size="small" fullWidth value={escrowReference} onChange={e => setEscrowReference(e.target.value)} sx={{ mb: 2, background: '#F5F5F5', borderRadius: 1 }} inputProps={{ maxLength: 32 }} />
-          {escrowError && <Alert severity="error" sx={{ mb: 1 }}>{escrowError}</Alert>}
+          <TextField
+            label="Payment Method"
+            size="small"
+            select
+            fullWidth
+            value={paymentMethod}
+            onChange={e => setPaymentMethod(e.target.value)}
+            sx={{ mb: 2, background: '#F5F5F5', borderRadius: 1 }}
+            SelectProps={{ native: true }}
+          >
+            <option value="Card">Card</option>
+            <option value="M-Pesa">M-Pesa</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+            <option value="Cash">Cash</option>
+          </TextField>
+          <TextField label="Reference" size="small" fullWidth value={paymentReference} onChange={e => setPaymentReference(e.target.value)} sx={{ mb: 2, background: '#F5F5F5', borderRadius: 1 }} inputProps={{ maxLength: 32 }} />
+          {paymentError && <Alert severity="error" sx={{ mb: 1 }}>{paymentError}</Alert>}
         </DialogContent>
         <DialogActions sx={{ pb: 2, pr: 3 }}>
-          <button onClick={handleCloseEscrowDialog} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: 'pointer', fontSize: 15, transition: 'background 0.2s' }}>Cancel</button>
-          <button
-            onClick={() => setConfirmEscrow(true)}
-            disabled={escrowLoading}
-            style={{ background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: escrowLoading ? 'not-allowed' : 'pointer', fontSize: 15, boxShadow: escrowLoading ? '0 0 0 2px #FF9800' : undefined, opacity: escrowLoading ? 0.7 : 1, transition: 'background 0.2s, opacity 0.2s', display: 'flex', alignItems: 'center', gap: 8 }}
-            title={escrowLoading ? 'Processing payment...' : ''}
+          <button onClick={handleClosePaymentDialog} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: 'pointer', fontSize: 15, transition: 'background 0.2s' }}>Cancel</button>          <button
+            onClick={() => setConfirmPayment(true)}
+            disabled={paymentLoading}
+            style={{ background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: paymentLoading ? 'not-allowed' : 'pointer', fontSize: 15, boxShadow: paymentLoading ? '0 0 0 2px #FF9800' : undefined, opacity: paymentLoading ? 0.7 : 1, transition: 'background 0.2s, opacity 0.2s', display: 'flex', alignItems: 'center', gap: 8 }}
+            title={paymentLoading ? 'Processing payment...' : ''}
           >
-            {escrowLoading && <CircularProgress size={18} sx={{ color: '#fff' }} />} {escrowLoading ? 'Paying...' : 'Pay Escrow'}
+            {paymentLoading && <CircularProgress size={18} sx={{ color: '#fff' }} />} {paymentLoading ? 'Paying...' : 'Pay'}
           </button>
         </DialogActions>
       </Dialog>
-      <Dialog open={confirmEscrow} onClose={() => setConfirmEscrow(false)}>
-        <DialogTitle>Confirm Escrow Payment</DialogTitle>
-        <DialogContent>Are you sure you want to pay escrow for <b>{escrowRental?.listing?.title}</b>?</DialogContent>
+      <Dialog open={confirmPayment} onClose={() => setConfirmPayment(false)}>
+        <DialogTitle>Confirm Payment</DialogTitle>
+        <DialogContent>Are you sure you want to pay for <b>{paymentRental?.listing?.title}</b>?</DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmEscrow(false)}>Cancel</Button>
-          <Button onClick={handleEscrowPayment} color="warning" variant="contained">Confirm</Button>
+          <Button onClick={() => setConfirmPayment(false)}>Cancel</Button>
+          <Button onClick={handlePayment} color="warning" variant="contained">Confirm</Button>
         </DialogActions>
       </Dialog>
       {/* Dispute Dialog */}
@@ -940,7 +915,7 @@ const MyRentals: React.FC = () => {
         <DialogActions sx={{ pb: 2, pr: 3 }}>
           <button onClick={handleCloseDisputeDialog} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: 'pointer', fontSize: 15, transition: 'background 0.2s' }}>Cancel</button>
           <button
-            onClick={() => setConfirmDispute(true)}
+            onClick={handleDisputeSubmit}
             disabled={disputeLoading}
             style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 22px', fontWeight: 700, cursor: disputeLoading ? 'not-allowed' : 'pointer', fontSize: 15, boxShadow: disputeLoading ? '0 0 0 2px #C62828' : undefined, opacity: disputeLoading ? 0.7 : 1, transition: 'background 0.2s, opacity 0.2s', display: 'flex', alignItems: 'center', gap: 8 }}
             title={disputeLoading ? 'Submitting dispute...' : ''}
@@ -955,14 +930,6 @@ const MyRentals: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setConfirmDispute(false)}>Cancel</Button>
           <Button onClick={handleRaiseDispute} color="error" variant="contained">Confirm</Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={!!confirmRelease} onClose={() => setConfirmRelease(null)}>
-        <DialogTitle>Confirm Escrow Release</DialogTitle>
-        <DialogContent>Are you sure you want to release escrow for this rental?</DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmRelease(null)}>Cancel</Button>
-          <Button onClick={() => confirmRelease && handleReleaseEscrow(confirmRelease)} color="success" variant="contained">Confirm</Button>
         </DialogActions>
       </Dialog>
       <Snackbar

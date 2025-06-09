@@ -14,7 +14,8 @@ interface Rental {
   status: string;
   startDate: string;
   endDate: string;
-  amount: number;
+  amount?: number;
+  payment?: { amount?: number };
   createdAt: string;
 }
 
@@ -70,7 +71,9 @@ const ProfileTransactions: React.FC = () => {
               <Typography>
                 Dates: {new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}
               </Typography>
-              <Typography>Amount: {r.amount}</Typography>
+              <Typography>
+                Amount: {typeof r.amount === 'number' ? r.amount : (r.payment && typeof r.payment.amount === 'number' ? r.payment.amount : 'N/A')}
+              </Typography>
               <Typography variant="caption" color="text.secondary">
                 Created: {new Date(r.createdAt).toLocaleString()}
               </Typography>

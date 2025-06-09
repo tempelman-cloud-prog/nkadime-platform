@@ -17,6 +17,7 @@
     "axios": "^0.21.1"
   },
   "devDependencies": {
+  "@react-native-community/cli": "latest",
     "@babel/core": "^7.12.3",
     "@babel/runtime": "^7.12.1",
     "eslint": "^7.14.0",

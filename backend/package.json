@@ -4,8 +4,9 @@
   "description": "Backend for the Nkadime peer-to-peer equipment rental platform.",
   "main": "src/app.ts",
   "scripts": {
-    "start": "ts-node src/app.ts",
+    "start": "node dist/app.js",
     "build": "tsc",
+    "postinstall": "tsc",
     "test": "jest"
   },
   "dependencies": {

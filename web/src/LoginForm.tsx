@@ -12,25 +12,21 @@ const LoginForm: React.FC<LoginFormProps> = ({ setIsLoggedIn }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { showMessage } = useSnackbar();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setSuccess(false);
     const result = await login(email, password);
     setLoading(false);
     if (result.token) {
       localStorage.setItem("token", result.token);
       showMessage("Login successful!", "success");
-      setSuccess(true);
       setIsLoggedIn(true);
       setTimeout(() => window.location.href = "/profile", 1000); // Redirect to profile after 1 second
     } else {
       showMessage(result.error || "Login failed", "error");
-      setSuccess(false);
     }
   };
 

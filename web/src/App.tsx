@@ -31,7 +31,6 @@ import Typography from '@mui/material/Typography';
 import { Link as RouterLink } from 'react-router-dom';
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
-import LinearProgress from '@mui/material/LinearProgress';
 import EditListingForm from "./EditListingForm";
 import MyRentals from "./MyRentals";
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
@@ -57,7 +56,6 @@ function App() {
   const [notifError, setNotifError] = useState("");
   const [notifAnchorEl, setNotifAnchorEl] = useState<null | HTMLElement>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'success' });
-  const [loading, setLoading] = useState(false);
   const notifPopoverOpen = Boolean(notifAnchorEl);
   const notifPopoverId = notifPopoverOpen ? 'notification-popover' : undefined;
 
@@ -85,7 +83,7 @@ function App() {
     async function fetchUnread() {
       if (userId) {
         try {
-          setLoading(true); // Show global loading
+          setNotifLoading(true);
           // Fetch notifications
           const notifications = await getNotifications(userId);
           const unreadNotifications = notifications.filter((n: any) => !n.read).length;
@@ -93,7 +91,7 @@ function App() {
         } catch {
           setUnreadCount(0);
         } finally {
-          setLoading(false);
+          setNotifLoading(false);
         }
       } else {
         setUnreadCount(0);
@@ -116,7 +114,7 @@ function App() {
     if (userId) {
       setNotifLoading(true);
       setNotifError("");
-      setLoading(true); // Show global loading
+      setNotifLoading(true);
       try {
         const nots = await getNotifications(userId);
         setNotifications(nots);
@@ -130,7 +128,7 @@ function App() {
         setNotifError("Failed to load notifications");
         setNotifLoading(false);
       } finally {
-        setLoading(false);
+        setNotifLoading(false);
       }
     }
   };
@@ -177,7 +175,7 @@ function App() {
 
   return (
     <SnackbarContext.Provider value={{ showMessage }}>
-      <LoadingContext.Provider value={{ setLoading }}>
+      <LoadingContext.Provider value={{ setNotifLoading }}>
         <MessagesProvider>
           <ConversationsProvider>
             <Router>

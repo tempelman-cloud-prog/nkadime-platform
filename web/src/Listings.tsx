@@ -22,8 +22,6 @@ const Listings: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [isOwner, setIsOwner] = useState(false);
 
   const fetchListings = useCallback(async () => {
     setLoading(true);
@@ -72,20 +70,6 @@ const Listings: React.FC = () => {
         });
       }
     }
-  }, []);
-
-  // Get current userId and set isOwner
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    let userId = "";
-    if (token) {
-      try {
-        const decoded = jwt_decode<JwtPayload>(token);
-        userId = decoded.userId || decoded.id || "";
-        setCurrentUserId(userId);
-      } catch {}
-    }
-    // listings is an array, so we can't check owner here, but in the ListingDetails page we do
   }, []);
 
   // Refetch listings when page/tab becomes visible (after edits/deletes elsewhere)

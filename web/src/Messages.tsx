@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { getReceivedMessages, markMessagesRead, sendListingMessage, getListingMessages, sendUserMessage } from './api';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Box, Typography, List, ListItem, ListItemAvatar, Avatar, ListItemText, Badge, Dialog, DialogTitle, DialogContent, TextField, Button, CircularProgress } from '@mui/material';
+import { useMessages, useConversations } from './MessagesContext';
+import { getReceivedMessages, sendListingMessage, markMessagesRead, markUserMessagesRead } from './api';
+import { useLocation } from 'react-router-dom';
 
 const Messages: React.FC = () => {
-  const [conversations, setConversations] = useState<any[]>([]);
+  const { sendMessage } = useMessages();
+  const { conversations, setConversations, resetUnread } = useConversations();
   const [selected, setSelected] = useState<any | null>(null);
   const [open, setOpen] = useState(false);
   const [reply, setReply] = useState('');
@@ -11,21 +14,14 @@ const Messages: React.FC = () => {
   const [threadLoading, setThreadLoading] = useState(false);
   const [replyLoading, setReplyLoading] = useState(false);
   const [replyError, setReplyError] = useState('');
+  const location = useLocation();
 
+  // Fetch existing conversations/messages on mount
   useEffect(() => {
-    fetchConversations();
-  }, []);
-
-  const fetchConversations = async () => {
-    const msgs = await getReceivedMessages();
-    setConversations(Array.isArray(msgs) ? msgs : []);
-  };
-
-  const fetchThread = async (listingId: string, fromUserId: string) => {
-    setThreadLoading(true);
-    setThread([]);
-    try {
-      const allMsgs = await getListingMessages(listingId);
+    let mounted = true;
+    getReceivedMessages().then((data) => {
+      if (!mounted) return;
+      // Get current user ID
       const token = localStorage.getItem('token');
       let currentUserId = '';
       if (token) {
@@ -34,102 +30,162 @@ const Messages: React.FC = () => {
           currentUserId = decoded.userId || decoded.id || '';
         } catch {}
       }
-      // Helper to get id from string or object
-      const getId = (u: any) => (typeof u === 'string' ? u : u?._id);
-      const filtered = allMsgs.filter((m: any) => {
-        const fromId = getId(m.fromUser);
-        const toId = getId(m.toUser);
-        return (
-          (fromId === fromUserId && toId === currentUserId) ||
-          (fromId === currentUserId && toId === fromUserId)
-        );
+      // Group messages by conversationId
+      const convMap: { [key: string]: any } = {};
+      (data.messages || data).forEach((msg: any) => {
+        const convId = msg.conversationId || msg._id || msg.listing?._id || msg.listingId;
+        if (!convId) return;
+        // The other user is the one who is NOT the current user
+        let otherUser = (msg.fromUser && (msg.fromUser._id || msg.fromUser.id || msg.fromUser)) === currentUserId ? msg.toUser : msg.fromUser;
+        if (!convMap[convId]) {
+          convMap[convId] = {
+            _id: convId,
+            message: msg.message,
+            updatedAt: msg.createdAt,
+            unreadCount: msg.unreadCount || 0,
+            thread: [msg],
+            fromUser: otherUser, // always the other user
+            listing: msg.listing,
+          };
+        } else {
+          convMap[convId].thread.push(msg);
+          // Optionally update latest message/updatedAt
+          if (new Date(msg.createdAt) > new Date(convMap[convId].updatedAt)) {
+            convMap[convId].message = msg.message;
+            convMap[convId].updatedAt = msg.createdAt;
+          }
+        }
       });
-      setThread(filtered.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
-    } catch {
-      setThread([]);
-    }
-    setThreadLoading(false);
-  };
+      // Sort conversations by updatedAt desc
+      const convArr = Object.values(convMap).sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      setConversations(convArr);
+    }).catch(() => {
+      setConversations([]);
+    });
+    return () => { mounted = false; };
+  }, [setConversations]);
 
+  // Add missing handlers
   const handleOpen = async (conv: any) => {
     setSelected(conv);
     setOpen(true);
-    setReply('');
-    setReplyError('');
-    setThread([]); // Clear previous thread
-    setThreadLoading(true); // Show spinner immediately
-    await markMessagesRead(conv.listing._id, conv.fromUser._id);
-    fetchConversations();
-    fetchThread(conv.listing._id, conv.fromUser._id);
+    setThreadLoading(true);
+    setThread(conv.thread || []); // Replace with real fetch if needed
+    setThreadLoading(false);
+    // Mark conversation as read in backend and context
+    if (conv.listing?._id || conv.listingId) {
+      try {
+        await markMessagesRead(conv.listing._id || conv.listingId, conv.fromUser?._id || conv.fromUser?.id || conv.fromUser);
+      } catch {}
+    } else if (conv.fromUser?._id || conv.fromUser?.id || conv.fromUser) {
+      try {
+        await markUserMessagesRead(conv.fromUser._id || conv.fromUser.id || conv.fromUser);
+      } catch {}
+    }
+    setConversations(prev => prev.map(c => c._id === conv._id ? { ...c, unreadCount: 0 } : c));
   };
 
   const handleClose = () => {
     setOpen(false);
     setSelected(null);
-    setReply('');
     setThread([]);
+    setReply('');
     setReplyError('');
   };
 
-  const handleReply = async () => {
-    if (!reply.trim() || !selected) return;
+  // Mark all as read when /messages is opened
+  useEffect(() => {
+    if (location.pathname === '/messages') {
+      resetUnread();
+    }
+  }, [location.pathname, resetUnread]);
+
+  const handleReply = useCallback(async () => {
+    if (!reply.trim() || !selected || replyLoading) return;
     setReplyLoading(true);
     setReplyError('');
     const token = localStorage.getItem('token');
     let currentUserId = '';
-    let currentUserName = 'You';
     if (token) {
       try {
         const decoded: any = JSON.parse(atob(token.split('.')[1]));
         currentUserId = decoded.userId || decoded.id || '';
-        currentUserName = decoded.name || 'You';
       } catch {}
     }
-    const optimisticMsg = {
-      _id: `optimistic-${Date.now()}`,
-      fromUser: { _id: currentUserId, name: currentUserName },
-      toUser: selected.fromUser,
-      message: reply,
-      createdAt: new Date().toISOString(),
-      read: false,
-      optimistic: true
-    };
-    setThread(prev => [...prev, optimisticMsg]);
-    setReply('');
-    try {
-      let res: any;
-      // If this conversation is tied to a listing, always provide toUserId for replies
-      if (selected.listing && selected.listing._id) {
-        // Always set recipient to the other user in the conversation
-        const ownerId = selected.listing.owner?._id || selected.listing.owner;
-        // The other participant is the one who is NOT the current user
-        let recipientId = selected.fromUser._id;
-        if (currentUserId === selected.fromUser._id) {
-          recipientId = ownerId;
-        }
-        if (recipientId === currentUserId) {
-          setReplyError('You cannot message yourself.');
-          setThread(prev => prev.filter(m => m._id !== optimisticMsg._id));
-          setReplyLoading(false);
-          return;
-        }
-        res = await sendListingMessage(selected.listing._id, reply, recipientId);
-      } else {
-        res = await sendUserMessage(selected.fromUser._id, reply);
-      }
-      if (res && !res.error) {
-        setThread(prev => prev.map(m => m._id === optimisticMsg._id ? res : m));
-        fetchConversations();
-      } else {
-        setReplyError(res.error || 'Failed to send reply');
-        setThread(prev => prev.filter(m => m._id !== optimisticMsg._id));
-      }
-    } catch (e: any) {
-      setReplyError(e.message || 'Failed to send reply');
-      setThread(prev => prev.filter(m => m._id !== optimisticMsg._id));
+    let recipientId = '';
+    if (thread && thread.length > 0) {
+      // Find all unique user IDs in the thread (fromUser and toUser)
+      const userIds = new Set<string>();
+      thread.forEach(m => {
+        if (m.fromUser?._id || m.fromUser?.id || m.fromUser) userIds.add(m.fromUser._id || m.fromUser.id || m.fromUser);
+        if (m.toUser?._id || m.toUser?.id || m.toUser) userIds.add(m.toUser._id || m.toUser.id || m.toUser);
+      });
+      userIds.delete(currentUserId);
+      recipientId = Array.from(userIds)[0];
+    } else {
+      // Use selected.fromUser and selected.toUser
+      const fromId = selected.fromUser?._id || selected.fromUser?.id || selected.fromUser;
+      const toId = selected.toUser?._id || selected.toUser?.id || selected.toUser;
+      if (fromId !== currentUserId) recipientId = fromId;
+      else if (toId !== currentUserId) recipientId = toId;
     }
-    setReplyLoading(false);
-  };
+    if (!recipientId || recipientId === currentUserId) {
+      setReplyError('No valid recipient found.');
+      setReplyLoading(false);
+      return;
+    }
+    let savedMsg: any = null;
+    // If this is a listing conversation, persist to backend
+    if (selected.listing?._id || selected.listingId || selected.type === 'listing') {
+      try {
+        savedMsg = await sendListingMessage(
+          selected.listing?._id || selected.listingId || selected._id,
+          reply,
+          recipientId
+        );
+      } catch (e: any) {
+        setReplyError(e.message || 'Failed to send message');
+        setReplyLoading(false);
+        return;
+      }
+    }
+    // Broadcast via WebSocket
+    sendMessage({
+      fromUser: currentUserId,
+      toUser: recipientId,
+      message: reply,
+      conversationId: selected._id
+    });
+    // Optimistically update conversations preview for sender's navbar
+    setConversations(prev => {
+      return prev.map(conv =>
+        conv._id === selected._id
+          ? { ...conv, message: reply, unreadCount: 0, updatedAt: new Date().toISOString() }
+          : conv
+      );
+    });
+    // Optimistically append to thread
+    setThread(prev => [
+      ...prev,
+      savedMsg ? {
+        _id: savedMsg._id,
+        fromUser: savedMsg.fromUser,
+        toUser: savedMsg.toUser,
+        message: savedMsg.message,
+        createdAt: savedMsg.createdAt,
+        conversationId: savedMsg.listing?._id || savedMsg.listing || selected._id
+      } : {
+        _id: `msg-${Date.now()}`,
+        fromUser: currentUserId,
+        toUser: recipientId,
+        message: reply,
+        createdAt: new Date().toISOString(),
+        conversationId: selected._id
+      }
+    ]);
+    setReply('');
+    setTimeout(() => setReplyLoading(false), 400); // Prevent double send
+  }, [reply, selected, sendMessage, replyLoading, setConversations, thread]);
 
   return (
     <Box maxWidth={600} mx="auto" mt={4}>
@@ -144,10 +200,12 @@ const Messages: React.FC = () => {
             </ListItemAvatar>
             <ListItemText
               primary={conv.fromUser?.name || 'User'}
-              secondary={<>
-                <b>{conv.listing?.title}</b><br/>
-                {conv.message}
-              </>}
+              secondary={
+                <>
+                  <b>{conv.listing?.title}</b><br/>
+                  {conv.message}
+                </>
+              }
             />
           </ListItem>
         ))}
@@ -159,24 +217,26 @@ const Messages: React.FC = () => {
             <Box>
               <Typography variant="subtitle1"><b>Listing:</b> {selected.listing?.title}</Typography>
               <Typography variant="subtitle2"><b>With:</b> {selected.fromUser?.name}</Typography>
-              <Box sx={{ my: 2, minHeight: 120, maxHeight: 260, overflowY: 'auto', bgcolor: '#f7f7f7', borderRadius: 2, p: 2 }}>
+              <Box style={{ margin: '16px 0', minHeight: 120, maxHeight: 260, overflowY: 'auto', background: '#f7f7f7' }}>
                 {threadLoading ? (
-                  <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress size={28} /></Box>
+                  <Box style={{ textAlign: 'center', padding: '24px 0' }}><CircularProgress size={28} /></Box>
                 ) : (!threadLoading && thread.length === 0) ? (
                   <Typography color="text.secondary">No messages yet.</Typography>
                 ) : (
-                  thread.map((msg, idx) => {
-                    const fromId = typeof msg.fromUser === 'string' ? msg.fromUser : msg.fromUser?._id;
-                    return (
-                      <Box key={msg._id || idx} sx={{ mb: 2, p: 1, bgcolor: fromId === selected.fromUser._id ? '#FFF3E0' : '#E3F2FD', borderRadius: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: fromId === selected.fromUser._id ? '#FF9800' : '#1976d2' }}>
-                          {fromId === selected.fromUser._id ? selected.fromUser?.name : 'You'}
-                        </Typography>
-                        <Typography variant="body1">{msg.message}</Typography>
-                        <Typography variant="caption" color="text.secondary">{msg.createdAt ? new Date(msg.createdAt).toLocaleString() : ''}</Typography>
-                      </Box>
-                    );
-                  })
+                  <>
+                    {thread.map((msg: any, idx: number) => {
+                      const fromId = typeof msg.fromUser === 'string' ? msg.fromUser : msg.fromUser?._id;
+                      return (
+                        <Box key={msg._id || idx} style={{ marginBottom: 8, padding: 8, background: fromId === selected.fromUser._id ? '#FFF3E0' : '#E3F2FD', borderRadius: 4 }}>
+                          <Typography variant="body2" style={{ fontWeight: 700, color: fromId === selected.fromUser._id ? '#FF9800' : '#1976d2' }}>
+                            {fromId === selected.fromUser._id ? selected.fromUser?.name : 'You'}
+                          </Typography>
+                          <Typography variant="body1">{msg.message}</Typography>
+                          <Typography variant="caption" color="text.secondary">{msg.createdAt ? new Date(msg.createdAt).toLocaleString() : ''}</Typography>
+                        </Box>
+                      );
+                    })}
+                  </>
                 )}
               </Box>
               <TextField
@@ -185,8 +245,8 @@ const Messages: React.FC = () => {
                 multiline
                 minRows={2}
                 value={reply}
-                onChange={e => setReply(e.target.value)}
-                sx={{ my: 2 }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReply(e.target.value)}
+                style={{ margin: '16px 0' }}
                 disabled={replyLoading}
               />
               {replyError && <Typography color="error" sx={{ mb: 1 }}>{replyError}</Typography>}
@@ -202,4 +262,3 @@ const Messages: React.FC = () => {
 };
 
 export default Messages;
-export {};

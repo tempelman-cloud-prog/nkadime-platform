@@ -5,6 +5,7 @@ export interface IUserMessage extends Document {
   toUser: mongoose.Types.ObjectId;
   message: string;
   createdAt: Date;
+  read: boolean;
 }
 
 const UserMessageSchema = new Schema<IUserMessage>({
@@ -12,6 +13,7 @@ const UserMessageSchema = new Schema<IUserMessage>({
   toUser: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   message: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
+  read: { type: Boolean, default: false },
 });
 
 export default mongoose.model<IUserMessage>('UserMessage', UserMessageSchema);

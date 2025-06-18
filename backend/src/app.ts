@@ -5,6 +5,7 @@ import bodyParser from 'body-parser';
 import cors from 'cors';
 import routes from './routes';
 import path from 'path';
+import * as WebSocket from 'ws'; // Import WebSocket module
 
 dotenv.config();
 
@@ -43,9 +44,49 @@ app.use('/api', (err: any, req: express.Request, res: express.Response, next: ex
   });
 });
 
-// Start the server
-app.listen(PORT, () => {
+// Create HTTP server for WebSocket
+const server = app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
 
-export default app;
+// Create WebSocket server
+const wss = new WebSocket.Server({ server, path: '/ws' });
+
+const userSockets = new Map<string, WebSocket.WebSocket>(); // userId -> ws
+
+// Handle WebSocket connections
+wss.on('connection', (ws) => {
+    let userId: string | null = null;
+
+    ws.on('message', (message: WebSocket.RawData) => {
+        try {
+            const data = JSON.parse(message.toString());
+            if (data.type === 'auth') {
+                userId = data.userId;
+                if (typeof userId === 'string') {
+                  userSockets.set(userId, ws);
+                }
+                return;
+            }
+            // For chat messages:
+            if (data.type === 'message') {
+                const { fromUser, toUser } = data;
+                // Send to sender
+                if (userSockets.has(fromUser)) {
+                    userSockets.get(fromUser)!.send(JSON.stringify(data));
+                }
+                // Send to recipient
+                if (userSockets.has(toUser) && toUser !== fromUser) {
+                    userSockets.get(toUser)!.send(JSON.stringify(data));
+                }
+            }
+        } catch (e) {
+            // handle error
+        }
+    });
+
+    ws.on('close', () => {
+        if (userId && typeof userId === 'string') userSockets.delete(userId);
+        console.log('Client disconnected');
+    });
+});

@@ -6,9 +6,8 @@ import {
   addFavorite, getFavorites,
   addReview, getReviews,
   createNotification, getNotifications,
-  getRentalHistory, createRentalRequest, /* updateRentalStatus, */
-  getAverageRating, updateListing,
-  addRentalMessage,
+  getRentalHistory, createRentalRequest, /* updateRentalStatus, */  getAverageRating, updateListing,
+  addRentalMessage, sendListingMessage, getListingMessages,
   addRentalPayment,
   addRentalReview,
   exportRentalAudit,
@@ -22,6 +21,8 @@ import {
   adminGetAllRentals, adminUpdateRentalStatus,
   adminGetAnalytics,
   sendUserMessage,
+  getReceivedMessages,
+  markUserMessagesRead,
   /* getUnreadMessageCount, */
   // resolveDispute, // Removed: not exported
   // raiseDispute, // Uncomment if implemented
@@ -123,12 +124,13 @@ router.patch('/rentals/:rentalId/status-audit', authenticateToken, updateRentalS
 // router.post('/rentals/:rentalId/release-escrow', authenticateToken, releaseEscrow); // Removed: releaseEscrow is not implemented
 
 // Pre-rental messaging routes
-// router.post('/listings/:id/messages', authenticateToken, sendListingMessage);
-// router.get('/listings/:id/messages', authenticateToken, getListingMessages);
+router.post('/listings/:id/messages', authenticateToken, sendListingMessage);
+router.get('/listings/:id/messages', authenticateToken, getListingMessages);
 // Direct user-to-user messaging (not tied to a listing)
 router.post('/messages/user', authenticateToken, sendUserMessage);
-// Fetch unread message count for navbar badge
-// router.get('/messages/unread-count', authenticateToken, getUnreadMessageCount);
+// Fetch all received messages (listing-based and direct)
+router.get('/messages/received', authenticateToken, getReceivedMessages);
+router.post('/messages/user/:id/mark-read', authenticateToken, markUserMessagesRead);
 
 // router.post('/rentals/:rentalId/dispute', authenticateToken, raiseDispute); // Removed: raiseDispute is not implemented/exported
 // router.post('/rentals/:rentalId/dispute/resolve', authenticateToken, resolveDispute); // Removed: resolveDispute is not exported

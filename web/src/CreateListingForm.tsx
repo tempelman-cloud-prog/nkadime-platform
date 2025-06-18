@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import jwt_decode from "jwt-decode";
 import { useNavigate } from "react-router-dom";
+import { useSnackbar } from "./App";
 
 const API_BASE = "http://localhost:5000/api";
 
@@ -21,10 +22,10 @@ const CreateListingForm: React.FC = () => {
   });
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-  const [message, setMessage] = useState("");
   const [imageError, setImageError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { showMessage } = useSnackbar();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -61,7 +62,6 @@ const CreateListingForm: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setMessage("");
     const token = localStorage.getItem("token");
     let userId = "";
     if (token) {
@@ -69,7 +69,7 @@ const CreateListingForm: React.FC = () => {
       userId = decoded.userId || decoded.id || "";
     }
     if (!userId) {
-      setMessage("You must be logged in to create a listing.");
+      showMessage("You must be logged in to create a listing.", "error");
       setSubmitting(false);
       return;
     }
@@ -90,13 +90,13 @@ const CreateListingForm: React.FC = () => {
         body: formData,
       });
       if (res.status === 401 || res.status === 403) {
-        setMessage("Session expired or unauthorized. Please log in again.");
+        showMessage("Session expired or unauthorized. Please log in again.", "error");
         setSubmitting(false);
         return;
       }
       const result = await res.json();
       if (result._id) {
-        setMessage("Listing created!");
+        showMessage("Listing created!", "success");
         setForm({ title: "", description: "", category: "", price: 0, location: "", priceUnit: "day" });
         setImages([]);
         setImagePreviews([]);
@@ -105,10 +105,10 @@ const CreateListingForm: React.FC = () => {
           navigate(`/listing/${result._id}`);
         }, 800);
       } else {
-        setMessage(result.error || "Failed to create listing");
+        showMessage(result.error || "Failed to create listing", "error");
       }
     } catch (err) {
-      setMessage("Network or server error. Please try again later.");
+      showMessage("Network or server error. Please try again later.", "error");
     }
     setSubmitting(false);
   };
@@ -251,7 +251,6 @@ const CreateListingForm: React.FC = () => {
         transition: 'background 0.2s, box-shadow 0.2s',
         letterSpacing: 0.5,
       }}>{submitting ? "Creating..." : "Create Listing"}</button>
-      <div style={{ minHeight: 24, color: message.includes('error') ? 'red' : '#388E3C', marginTop: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 }}>{message}</div>
     </form>
   );
 };

@@ -4,7 +4,6 @@ import Grid from "@mui/material/Grid";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
-import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import { getListings, updateUser, getUserReviews, getUserAverageRating, deleteListing } from "./api";
 import jwt_decode from "jwt-decode";
@@ -22,6 +21,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import Switch from '@mui/material/Switch';
+import { useSnackbar } from "./App";
+import Rating from '@mui/material/Rating';
 
 interface JwtPayload {
   userId?: string;
@@ -72,7 +73,6 @@ const Profile: React.FC = () => {
   const [tempBio, setTempBio] = useState("");
   const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState("");
   const [rentalHistory, setRentalHistory] = useState<any[]>([]);
   const [userReviews, setUserReviews] = useState<Review[]>([]);
   const [userAvgRating, setUserAvgRating] = useState<number | null>(null);
@@ -81,6 +81,7 @@ const Profile: React.FC = () => {
   const [showMap, setShowMap] = useState(false);
   const [mapPosition, setMapPosition] = useState<[number, number] | null>(null);
   const navigate = useNavigate();
+  const { showMessage } = useSnackbar();
 
   useEffect(() => {
     async function fetchProfile() {
@@ -147,7 +148,6 @@ const Profile: React.FC = () => {
     setTempProfilePic(profilePic);
     setTempBio(bio);
     setEditMode(true);
-    setSaveMessage(""); // Clear any previous save message
   };
 
   const handleCancel = () => {
@@ -157,12 +157,10 @@ const Profile: React.FC = () => {
     setTempProfilePic(profilePic);
     setTempBio(bio);
     setProfilePicFile(null);
-    setSaveMessage(""); // Clear any previous save message
   };
 
   const handleSave = async () => {
     setSaving(true);
-    setSaveMessage("");
     try {
       const result = await updateUser(userId, {
         name: tempName,
@@ -182,13 +180,13 @@ const Profile: React.FC = () => {
         setMapPosition(result.mapPosition || null);
         setEditMode(false);
         setProfilePicFile(null);
-        setSaveMessage("Profile updated successfully!");
+        showMessage("Profile updated successfully!", "success");
       } else {
-        setSaveMessage(result.error || "Failed to update profile");
+        showMessage(result.error || "Failed to update profile", "error");
       }
     } catch (err) {
       setSaving(false);
-      setSaveMessage("Failed to update profile");
+      showMessage("Failed to update profile", "error");
     }
   };
 
@@ -219,11 +217,6 @@ const Profile: React.FC = () => {
   }
   const isOwnProfile = loggedInUserId && userId && loggedInUserId === userId;
 
-  const handleMapClick = (e: any) => {
-    if (!editMode) return;
-    setMapPosition([e.latlng.lat, e.latlng.lng]);
-  };
-
   const handleToggleMap = async () => {
     setShowMap((prev) => !prev);
     // Optionally, update backend immediately
@@ -239,7 +232,7 @@ const Profile: React.FC = () => {
   if (error)
     return (
       <Box mt={4}>
-        <Alert severity="error">{error}</Alert>
+        <Typography color="error">{error}</Typography>
       </Box>
     );
 
@@ -355,7 +348,9 @@ const Profile: React.FC = () => {
               <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
                 <Typography variant="subtitle2" color="#0a2342">Disputes</Typography>
                 <Button variant="text" color="primary" sx={{ fontWeight: 800, fontSize: 18, p: 0, minWidth: 0 }} onClick={() => navigate(`/profile/${routeUserId || userId}/disputes`)}>
-                  <Typography variant="h6" fontWeight={800} color="#0a2342">{rentalHistory.filter(r => r.dispute && r.dispute.status).length}</Typography>
+                  <Typography variant="h6" fontWeight={800} color="#0a2342">
+                    {rentalHistory.filter(r => r.dispute && r.dispute.status && r.dispute.status !== 'none' && r.dispute.status !== 'closed' && r.dispute.raisedBy === userId).length}
+                  </Typography>
                 </Button>
               </Box>
               <Box sx={{ background: '#fff', borderRadius: 2, p: 2, minWidth: { xs: '100%', sm: 110 }, width: { xs: '100%', sm: 'auto' }, textAlign: 'center', boxShadow: 1 }}>
@@ -401,13 +396,19 @@ const Profile: React.FC = () => {
         <Box sx={{ background: '#fff', borderRadius: 3, p: 4, boxShadow: 2, mb: 4, mt: -4, maxWidth: 600, mx: 'auto' }}>
           <Typography variant="h6" fontWeight={700} color="#0a2342" mb={2}>Edit Profile</Typography>
           <Box component="form" onSubmit={e => { e.preventDefault(); handleSave(); }} display="flex" flexDirection="column" gap={2}>
-            <TextField label="Name" value={tempName} onChange={e => setTempName(e.target.value)} fullWidth required />
-            <TextField label="Location" value={tempLocation} onChange={e => setTempLocation(e.target.value)} fullWidth />
-            <TextField label="Bio" value={tempBio} onChange={e => setTempBio(e.target.value)} fullWidth multiline minRows={2} />
+            <TextField label="Name" value={tempName} onChange={e => setTempName(e.target.value)} fullWidth required inputProps={{ maxLength: 64 }} autoFocus sx={{
+              background: '#F5F5F5', borderRadius: 2, '& .MuiInputBase-root': { fontWeight: 600, fontSize: 17 }, '& .MuiInputLabel-root': { fontWeight: 700 }
+            }} />
+            <TextField label="Location" value={tempLocation} onChange={e => setTempLocation(e.target.value)} fullWidth inputProps={{ maxLength: 64 }} sx={{
+              background: '#F5F5F5', borderRadius: 2, '& .MuiInputBase-root': { fontWeight: 600, fontSize: 17 }, '& .MuiInputLabel-root': { fontWeight: 700 }
+            }} />
+            <TextField label="Bio" value={tempBio} onChange={e => setTempBio(e.target.value)} fullWidth multiline minRows={2} inputProps={{ maxLength: 240 }} sx={{
+              background: '#F5F5F5', borderRadius: 2, '& .MuiInputBase-root': { fontWeight: 500, fontSize: 16 }, '& .MuiInputLabel-root': { fontWeight: 700 }
+            }} />
             {/* Map location picker in edit mode */}
             <Box display="flex" alignItems="center" gap={1}>
               <Typography variant="subtitle2" color="#0a2342">Show Map Location</Typography>
-              <Switch checked={showMap} onChange={handleToggleMap} color="primary" />
+              <Switch checked={showMap} onChange={handleToggleMap} color="primary" inputProps={{ 'aria-label': 'Show map location' }} />
               <Typography variant="body2" color="text.secondary">{showMap ? 'Visible' : 'Hidden'}</Typography>
             </Box>
             {showMap && (
@@ -415,18 +416,13 @@ const Profile: React.FC = () => {
                 <MapContainer
                   center={mapPosition || [-24.6282, 25.9231]}
                   zoom={mapPosition ? 13 : 7}
-                  style={{ height: '100%', width: '100' }}
-                  whenReady={() => {
-                    // Attach click event to map after it's ready
-                    // We'll use a ref or useMapEvents for more advanced cases
-                  }}
+                  style={{ height: '100%', width: '100%' }}
                 >
                   <TileLayer
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution="&copy; OpenStreetMap contributors"
                   />
                   {mapPosition && <Marker position={mapPosition} />}
-                  {/* Only allow setting marker in edit mode */}
                   {isOwnProfile && editMode && (
                     <MapClickHandler setMapPosition={setMapPosition} editMode={editMode} />
                   )}
@@ -435,23 +431,22 @@ const Profile: React.FC = () => {
               </Box>
             )}
             <Box display="flex" alignItems="center" gap={2}>
-              <Button variant="contained" component="label" startIcon={<PhotoCamera />} sx={{ background: '#FF9800', color: '#fff', fontWeight: 700, borderRadius: 2, '&:hover': { background: '#fb8c00' } }}>
+              <Button variant="contained" component="label" startIcon={<PhotoCamera />} sx={{ background: '#FF9800', color: '#fff', fontWeight: 700, borderRadius: 2, '&:hover': { background: '#fb8c00' }, transition: 'background 0.2s' }}>
                 Upload Picture
-                <input type="file" accept="image/*" hidden onChange={handleProfilePicChange} />
+                <input type="file" accept="image/*" hidden onChange={handleProfilePicChange} aria-label="Upload profile picture" />
               </Button>
               {tempProfilePic && (
                 <Avatar src={typeof tempProfilePic === 'string' ? tempProfilePic : undefined} sx={{ width: 56, height: 56, ml: 2 }} />
               )}
             </Box>
             <Box display="flex" gap={2} mt={2}>
-              <Button type="submit" variant="contained" startIcon={<SaveIcon />} sx={{ background: '#388E3C', color: '#fff', fontWeight: 700, borderRadius: 2, '&:hover': { background: '#2e7d32' } }} disabled={saving}>
+              <Button type="submit" variant="contained" startIcon={<SaveIcon />} sx={{ background: '#388E3C', color: '#fff', fontWeight: 700, borderRadius: 2, '&:hover': { background: '#2e7d32' }, boxShadow: 2, transition: 'background 0.2s, box-shadow 0.2s', minWidth: 120 }} disabled={saving} aria-label="Save profile">
                 {saving ? 'Saving...' : 'Save'}
               </Button>
-              <Button variant="outlined" startIcon={<CancelIcon />} onClick={handleCancel} sx={{ color: '#0a2342', borderColor: '#0a2342', fontWeight: 700, borderRadius: 2 }}>
+              <Button variant="outlined" startIcon={<CancelIcon />} onClick={handleCancel} sx={{ color: '#0a2342', borderColor: '#0a2342', fontWeight: 700, borderRadius: 2, minWidth: 120, transition: 'border 0.2s, color 0.2s' }} aria-label="Cancel edit">
                 Cancel
               </Button>
             </Box>
-            {saveMessage && <Typography color={saveMessage.includes('success') ? 'green' : 'red'} mt={1}>{saveMessage}</Typography>}
           </Box>
         </Box>
       )}
@@ -460,11 +455,30 @@ const Profile: React.FC = () => {
         <Typography variant="h6" fontWeight={700} color="#0a2342" mb={2}>
           {name ? `${name}'s Reviews` : 'User Reviews'}
         </Typography>
-        {userReviews.length === 0 && <Typography color="text.secondary">No user reviews yet.</Typography>}
+        {userReviews.filter(r => {
+          // Prevent owner from reviewing their own listing
+          if (!r.listing) return true;
+          const listing = listings.find(l => l._id === r.listing && (!('deleted' in l) || l.deleted !== true));
+          if (!listing) return true;
+          // Explicitly cast reviewer as any to avoid TS2339
+          const reviewerId = typeof r.reviewer === 'object' && r.reviewer !== null ? ((r.reviewer as any)._id || (r.reviewer as any).id) : r.reviewer;
+          return reviewerId !== listing.owner;
+        }).length === 0 && <Typography color="text.secondary">No user reviews yet.</Typography>}
         <ul style={{ padding: 0, listStyle: 'none', width: '100%' }}>
-          {userReviews.map(r => (
+          {userReviews.filter(r => {
+            if (!r.listing) return true;
+            const listing = listings.find(l => l._id === r.listing && (!('deleted' in l) || l.deleted !== true));
+            if (!listing) return true;
+            // Explicitly cast reviewer as any to avoid TS2339
+            const reviewerId = typeof r.reviewer === 'object' && r.reviewer !== null ? ((r.reviewer as any)._id || (r.reviewer as any).id) : r.reviewer;
+            return reviewerId !== listing.owner;
+          }).map(r => (
             <li key={r._id} style={{ background: '#f7f7f7', borderRadius: 10, marginBottom: 12, padding: '1em 1em 0.7em 1em', boxShadow: '0 1px 6px #0a234211' }}>
-              <b style={{ color: '#0a2342' }}>Rating:</b> {r.rating} &nbsp;|&nbsp; <b style={{ color: '#607D8B' }}>Comment:</b> {r.comment}
+              <Box display="flex" alignItems="center" gap={1}>
+                <Rating value={r.rating} readOnly precision={0.5} size="small" sx={{ color: '#FF9800' }} />
+                <Typography variant="body2" color="#0a2342" fontWeight={600}>{r.rating.toFixed(1)}</Typography>
+                <span style={{ color: '#888', fontSize: 13, marginLeft: 8 }}><b style={{ color: '#607D8B' }}>Comment:</b> {r.comment}</span>
+              </Box>
               <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>
                 By: {typeof r.reviewer === 'object' && r.reviewer !== null && 'name' in r.reviewer ? (r.reviewer as any).name : r.reviewer}
               </div>
@@ -487,7 +501,7 @@ const Profile: React.FC = () => {
         >
           View Transaction History
         </Button>
-        {listings.length === 0 ? (
+        {listings.filter(l => !('deleted' in l) || l.deleted !== true).length === 0 ? (
           <Box sx={{ background: '#fff', borderRadius: 3, p: 3 }}>
             <Typography variant="body2" color="text.secondary">
               {routeUserId ? "This user has not created any listings yet." : "You have not created any listings yet."}
@@ -495,7 +509,7 @@ const Profile: React.FC = () => {
           </Box>
         ) : (
           <Grid container spacing={3}>
-            {listings.map(listing => (
+            {listings.filter(l => !('deleted' in l) || l.deleted !== true).map(listing => (
               <Grid item xs={12} sm={6} md={4} key={listing._id}>
                 <Box sx={{ background: '#fff', borderRadius: 3, p: 2, boxShadow: 1, minHeight: 180, position: 'relative' }}>
                   <Box sx={{ width: '100%', height: 120, mb: 1, borderRadius: 2, overflow: 'hidden', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -506,7 +520,7 @@ const Profile: React.FC = () => {
                               ? listing.images[0]
                               : `${process.env.REACT_APP_API_URL || "http://localhost:5000"}/${listing.images[0].replace(/^\/+/,'')}`
                             )
-                          : process.env.PUBLIC_URL + '/images/home items.png'
+                          : (process.env.PUBLIC_URL + '/images/home items.png')
                       }
                       alt={listing.title}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -605,12 +619,13 @@ const Profile: React.FC = () => {
                   }));
                   setDeleteDialogOpen(false);
                   setListingToDelete(null);
-                  // Optionally show a snackbar or message here
+                  showMessage("Listing deleted successfully!", "success");
+                  window.dispatchEvent(new CustomEvent('listingDeleted', { detail: listingToDelete._id }));
                 } else {
-                  alert(res.error || 'Failed to delete listing');
+                  showMessage(res.error || 'Failed to delete listing', "error");
                 }
               } catch (err) {
-                alert('Network or server error. Please try again.');
+                showMessage('Network or server error. Please try again.', "error");
               }
             }}
             color="error"
@@ -620,19 +635,109 @@ const Profile: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      {/* Dispute List Section (filtered to active disputes only) */}
+      <Box mt={4}>
+        <Typography variant="h6" fontWeight={700} color="#0a2342" mb={1}>
+          {name ? `${name}'s Active Disputes` : 'Active Disputes'}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" mb={2}>
+          Only disputes that are currently open, in review, escalated, or unresolved are shown here.
+        </Typography>
+        <DisputeList disputes={rentalHistory.filter(r => r.dispute && r.dispute.status && r.dispute.status !== 'none' && r.dispute.status !== 'closed' && r.dispute.raisedBy === userId)} />
+      </Box>
     </Box>
   );
 };
 
 const MapClickHandler = ({ setMapPosition, editMode }: { setMapPosition: React.Dispatch<React.SetStateAction<[number, number] | null>>, editMode: boolean }) => {
-  const map = useMapEvents({
+  useMapEvents({
     click: (e) => {
       if (editMode) {
         setMapPosition([e.latlng.lat, e.latlng.lng]);
       }
     },
-  });
-  return null;
+  });  return null;
+}
+
+// Helper to map dispute status to label and color
+const getDisputeStatusMeta = (status: string) => {
+  switch (status) {
+    case 'open':
+      return { label: 'Open', color: '#FF9800', bg: '#fff3e0' };
+    case 'in_review':
+      return { label: 'In Review', color: '#1976d2', bg: '#e3f2fd' };
+    case 'resolved':
+      return { label: 'Resolved', color: '#388e3c', bg: '#e8f5e9' };
+    case 'escalated':
+      return { label: 'Escalated', color: '#d84315', bg: '#ffebee' };
+    default:
+      return { label: status.charAt(0).toUpperCase() + status.slice(1), color: '#757575', bg: '#f5f5f5' };
+  }
+};
+
+// DisputeList component for clarity and polish
+const DisputeList: React.FC<{ disputes: any[] }> = ({ disputes }) => {
+  const navigate = useNavigate();
+  if (!disputes || disputes.length === 0) {
+    return (
+      <Box sx={{ background: '#fff', borderRadius: 2, p: 3, textAlign: 'center' }}>
+        <Typography color="text.secondary">No active disputes at this time.</Typography>
+      </Box>
+    );
+  }
+  return (
+    <ul style={{ padding: 0, listStyle: 'none', width: '100%' }}>
+      {disputes.map((r: any) => {
+        const meta = getDisputeStatusMeta(r.dispute.status);
+        return (
+          <li key={r._id || r.rentalId} style={{ background: meta.bg, borderRadius: 10, marginBottom: 14, padding: '1em 1em 0.7em 1em', boxShadow: '0 1px 6px #0a234211', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+              <span
+                style={{
+                  display: 'inline-block',
+                  minWidth: 80,
+                  fontWeight: 700,
+                  color: meta.color,
+                  background: meta.bg,
+                  borderRadius: 8,
+                  padding: '2px 12px',
+                  fontSize: 15,
+                  border: `1.5px solid ${meta.color}`,
+                  marginRight: 8,
+                }}
+                aria-label={`Dispute status: ${meta.label}`}
+              >
+                {meta.label}
+              </span>
+              <Typography variant="body2" color="#607D8B" fontWeight={600} sx={{ ml: 1 }}>
+                Reason:
+              </Typography>
+              <Typography variant="body2" color="#0a2342" fontWeight={500} sx={{ ml: 0.5 }}>
+                {r.dispute.reason || 'N/A'}
+              </Typography>
+            </Box>
+            <Box display="flex" alignItems="center" gap={1}>
+              <Typography variant="body2" color="#888" fontWeight={500}>
+                Rental:
+              </Typography>
+              <Button
+                variant="text"
+                color="primary"
+                sx={{ fontWeight: 700, fontSize: 15, p: 0, minWidth: 0, textTransform: 'none' }}
+                onClick={() => navigate(`/rental/${r.rentalId || r._id}`)}
+                aria-label={`View rental details for ${r.title || r.rentalTitle || r.rentalId || r._id}`}
+              >
+                {r.title || r.rentalTitle || `Rental #${r.rentalId || r._id}`}
+              </Button>
+            </Box>
+            <Typography variant="caption" color="#888" sx={{ mt: 0.5 }}>
+              Last updated: {r.dispute.updatedAt ? new Date(r.dispute.updatedAt).toLocaleString() : 'N/A'}
+            </Typography>
+          </li>
+        );
+      })}
+    </ul>
+  );
 };
 
 export default Profile;

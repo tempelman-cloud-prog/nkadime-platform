@@ -9,6 +9,7 @@ import Typography from "@mui/material/Typography";
 import Dialog from '@mui/material/Dialog';
 import DialogContent from '@mui/material/DialogContent';
 import Alert from '@mui/material/Alert';
+import { useSnackbar } from "./App";
 
 const EditListingForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -22,12 +23,12 @@ const EditListingForm: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { showMessage } = useSnackbar();
 
   useEffect(() => {
     setLoading(true);
@@ -73,7 +74,6 @@ const EditListingForm: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setMessage("");
     try {
       let result;
       if (imageFile) {
@@ -85,19 +85,19 @@ const EditListingForm: React.FC = () => {
         formData.append('price', String(form.price));
         formData.append('priceUnit', form.priceUnit);
         formData.append('location', form.location);
-        formData.append('images', imageFile); // <-- changed from 'image' to 'images'
-        result = await updateListing(id!, formData); // updateListing should handle FormData
+        formData.append('images', imageFile);
+        result = await updateListing(id!, formData);
       } else {
         result = await updateListing(id!, form);
       }
       if (!result.error) {
-        setMessage("Listing updated!");
+        showMessage("Listing updated!", "success");
         setTimeout(() => navigate(`/listing/${id}`), 1000);
       } else {
-        setMessage(result.error || "Failed to update listing");
+        showMessage(result.error || "Failed to update listing", "error");
       }
     } catch (err) {
-      setMessage("Network or server error. Please try again later.");
+      showMessage("Network or server error. Please try again later.", "error");
     }
     setSubmitting(false);
   };
@@ -193,7 +193,7 @@ const EditListingForm: React.FC = () => {
         <Button type="submit" variant="contained" color="primary" disabled={submitting} sx={{ fontWeight: 700, borderRadius: 2 }}>
           {submitting ? "Saving..." : "Save Changes"}
         </Button>
-        <Box mt={2} color={message.includes('error') ? 'red' : '#333'}>{message}</Box>
+        {/* Remove inline message Box, use Snackbar for feedback */}
       </form>
       {imagePreview && (
         <Dialog open={lightboxOpen} onClose={() => setLightboxOpen(false)} maxWidth="md">

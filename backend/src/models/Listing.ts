@@ -11,6 +11,8 @@ export interface IListing extends Document {
   location: string;
   status: 'available' | 'pending approval' | 'unavailable';
   createdAt: Date;
+  deleted?: boolean;
+  deletedAt?: Date;
 }
 
 const ListingSchema: Schema = new Schema({
@@ -23,7 +25,9 @@ const ListingSchema: Schema = new Schema({
   priceUnit: { type: String, default: 'day' },
   location: { type: String, required: true },
   status: { type: String, enum: ['available', 'pending approval', 'unavailable'], default: 'available' },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  deleted: { type: Boolean, default: false },
+  deletedAt: { type: Date, default: null }
 });
 
 const Listing = mongoose.model<IListing>('Listing', ListingSchema);

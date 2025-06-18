@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import { login } from "./api";
+import { useSnackbar } from "./App";
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 
 interface LoginFormProps {
   setIsLoggedIn: (loggedIn: boolean) => void;
@@ -8,25 +11,25 @@ interface LoginFormProps {
 const LoginForm: React.FC<LoginFormProps> = ({ setIsLoggedIn }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const { showMessage } = useSnackbar();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMessage("");
     setSuccess(false);
     const result = await login(email, password);
     setLoading(false);
     if (result.token) {
       localStorage.setItem("token", result.token);
-      setMessage("Login successful!");
+      showMessage("Login successful!", "success");
       setSuccess(true);
       setIsLoggedIn(true);
       setTimeout(() => window.location.href = "/profile", 1000); // Redirect to profile after 1 second
     } else {
-      setMessage(result.error || "Login failed");
+      showMessage(result.error || "Login failed", "error");
       setSuccess(false);
     }
   };
@@ -50,17 +53,42 @@ const LoginForm: React.FC<LoginFormProps> = ({ setIsLoggedIn }) => {
         value={email}
         onChange={e => setEmail(e.target.value)}
         required
+        className="input"
         style={{ padding: 14, borderRadius: 12, border: '2px solid #e0e0e0', fontSize: 18, marginBottom: 8, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
       />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={e => setPassword(e.target.value)}
-        required
-        style={{ padding: 14, borderRadius: 12, border: '2px solid #e0e0e0', fontSize: 18, marginBottom: 8, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
-      />
-      <button type="submit" disabled={loading} style={{
+      <div style={{ position: 'relative' }}>
+        <input
+          type={showPassword ? "text" : "password"}
+          placeholder="Password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          required
+          style={{ padding: 14, borderRadius: 12, border: '2px solid #e0e0e0', fontSize: 18, marginBottom: 8, transition: 'border 0.2s', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', width: '100%' }}
+        />
+        <button
+          type="button"
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
+          onClick={() => setShowPassword(v => !v)}
+          style={{
+            position: 'absolute',
+            right: 12,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            margin: 0,
+            outline: 'none',
+            color: '#888',
+            fontSize: 22
+          }}
+          tabIndex={0}
+        >
+          {showPassword ? <VisibilityOff fontSize="inherit" /> : <Visibility fontSize="inherit" />}
+        </button>
+      </div>
+      <button type="submit" disabled={loading} className="submitButton" style={{
         background: 'linear-gradient(90deg, #FF9800 0%, #FFB74D 100%)',
         color: '#fff',
         border: 'none',
@@ -71,10 +99,11 @@ const LoginForm: React.FC<LoginFormProps> = ({ setIsLoggedIn }) => {
         boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
         cursor: loading ? 'not-allowed' : 'pointer',
         marginTop: 10,
-        transition: 'background 0.2s, box-shadow 0.2s',
+        transition: 'background 0.2s, box-shadow 0.2s, transform 0.1s',
         letterSpacing: 0.5,
+        outline: 'none',
+        animation: 'fadeInUp 0.5s',
       }}>{loading ? "Logging in..." : "Login"}</button>
-      <div style={{ minHeight: 24, color: success ? '#388E3C' : 'red', marginTop: 8, textAlign: 'center', fontSize: 15 }}>{message}</div>
       <button
         type="button"
         style={{

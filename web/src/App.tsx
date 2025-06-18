@@ -39,6 +39,7 @@ import Messages from './Messages';
 import ProfileDisputes from "./ProfileDisputes";
 import ProfileReviews from "./ProfileReviews";
 import ProfileTransactions from "./ProfileTransactions";
+import { MessagesProvider, ConversationsProvider, useConversations } from './MessagesContext';
 
 // Snackbar and Loading context for global feedback and loading
 const SnackbarContext = createContext<{ showMessage: (msg: string, severity?: 'success' | 'error' | 'info' | 'warning') => void }>({ showMessage: () => {} });
@@ -154,174 +155,195 @@ function App() {
     setSnackbar(s => ({ ...s, open: false }));
   };
 
+  // Place this component inside ConversationsProvider, not at the top level
+  function MessagesBadge() {
+    const { conversations } = useConversations();
+    const unreadMessages = conversations.reduce((acc, conv) => acc + (conv.unreadCount || 0), 0);
+    return (
+      <Badge
+        badgeContent={unreadMessages}
+        invisible={!unreadMessages}
+        sx={{
+          '& .MuiBadge-badge': {
+            backgroundColor: 'green',
+            color: 'white',
+          },
+        }}
+      >
+        <MailOutlineIcon style={{ fontSize: 22, verticalAlign: 'middle' }} />
+      </Badge>
+    );
+  }
+
   return (
     <SnackbarContext.Provider value={{ showMessage }}>
       <LoadingContext.Provider value={{ setLoading }}>
-        {loading && <LinearProgress sx={{ position: 'fixed', top: 0, left: 0, width: '100%', zIndex: 2000 }} aria-label="Loading..." />}
-        <Router>
-          {/* Hide navbar on /admin and /admin-login */}
-          {window.location.pathname !== '/admin' && window.location.pathname !== '/admin-login' && (
-            <nav className="navbar" aria-label="Main navigation">
-              <div className="logo" aria-label="Nkadime Home">
-                <img src="/images/logo.PNG" alt="Nkadime Logo" style={{ height: '48px', width: 'auto', verticalAlign: 'middle' }} />
-              </div>
-              <ul className="nav-links" style={{ display: 'flex', gap: '1.5em', listStyle: 'none', margin: 0, padding: 0 }}>
-                <li><Link className="nav-btn" to="/">Home</Link></li>
-                {!isLoggedIn && <li><Link className="nav-btn" to="/about">About Us</Link></li>}
-                {!isLoggedIn && <li><Link className="nav-btn" to="/how-it-works">How It Works</Link></li>}
-                {!isLoggedIn && <li><Link className="nav-btn" to="/faq">FAQ</Link></li>}
-                {!isLoggedIn && <li><Link className="nav-btn" to="/contact">Contact</Link></li>}
-                {!isLoggedIn && <li><Link className="nav-btn" to="/register">Register</Link></li>}
-                <li><Link className="nav-btn" to="/listings">Listings</Link></li>
-                {isLoggedIn && <li><Link className="nav-btn" to="/create-listing">Create Listing</Link></li>}
-                {isLoggedIn && <li><Link className="nav-btn" to="/profile">Profile</Link></li>}
-                {isLoggedIn && <li><Link className="nav-btn" to="/favourites">My Favourites</Link></li>}
-                {isLoggedIn && <li><Link className="nav-btn" to="/my-rentals">My Rentals</Link></li>}
-                {!isLoggedIn && <li><Link className="nav-btn" to="/login">Login</Link></li>}
-                {isLoggedIn && (
-                  <>
-                    <li><button className="nav-btn" onClick={handleLogout}>Logout</button></li>
-                    <li style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <IconButton
-                        aria-label="Notifications"
-                        color="inherit"
-                        onClick={handleNotifIconClick}
-                        aria-describedby={notifPopoverId}
-                        sx={{ p: 0, ml: 1 }}
-                      >
-                        <Badge badgeContent={unreadCount} color="error" overlap="circular" invisible={unreadCount === 0}>
-                          <span style={{ fontSize: 26, color: unreadCount > 0 ? '#1976d2' : '#607D8B', position: 'relative', display: 'inline-block' }}>
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                          </span>
-                        </Badge>
-                      </IconButton>
-                      <Popover
-                        id={notifPopoverId}
-                        open={notifPopoverOpen}
-                        anchorEl={notifAnchorEl}
-                        onClose={handleNotifPopoverClose}
-                        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                        PaperProps={{ sx: { minWidth: 340, maxWidth: 420, p: 2, boxShadow: 4 } }}
-                      >
-                        <div style={{ minHeight: 60, minWidth: 320 }}>
-                          <Typography component="h3" sx={{ color: '#FF9800', fontWeight: 700, fontSize: 20, mb: 1 }}>Notifications</Typography>
-                          {notifLoading ? (
-                            <div style={{ textAlign: 'center', padding: 24 }}><CircularProgress size={28} /></div>
-                          ) : notifError ? (
-                            <div style={{ color: 'red', textAlign: 'center', padding: 12 }}>{notifError}</div>
-                          ) : notifications.length === 0 ? (
-                            <div style={{ color: '#888', textAlign: 'center', padding: 12 }}>No notifications yet.</div>
-                          ) : (
-                            <>
-                              {notifications.some((n) => !n.read) && (
-                                <Button onClick={handleMarkAllRead} size="small" sx={{ mb: 1, color: '#1976d2', fontWeight: 700, textTransform: 'none' }}>Mark all as read</Button>
-                              )}
-                              <Divider sx={{ mb: 1 }} />
-                              <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 320, overflowY: 'auto' }}>
-                                {notifications.map((n, idx) => (
-                                  <li
-                                    key={n._id || idx}
-                                    style={{
-                                      background: n.read ? '#fff' : '#FFF3E0',
-                                      borderLeft: n.read ? '4px solid #fff' : '4px solid #FF9800',
-                                      borderRadius: 10,
-                                      boxShadow: '0 1px 6px #455a6411',
-                                      marginBottom: 10,
-                                      padding: '0.9em 1em',
-                                      fontSize: 16,
-                                      color: '#444',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 12,
-                                      fontWeight: n.read ? 400 : 700,
-                                      opacity: n.read ? 0.7 : 1,
-                                      outline: n.read ? 'none' : '2px solid #FF9800',
-                                    }}
-                                    tabIndex={0}
-                                    aria-label={n.message}
+        <MessagesProvider>
+          <ConversationsProvider>
+            <Router>
+              {/* Hide navbar on /admin and /admin-login */}
+              {window.location.pathname !== '/admin' && window.location.pathname !== '/admin-login' && (
+                <nav className="navbar" aria-label="Main navigation">
+                  <div className="logo" aria-label="Nkadime Home">
+                    <img src="/images/logo.PNG" alt="Nkadime Logo" style={{ height: '48px', width: 'auto', verticalAlign: 'middle' }} />
+                  </div>
+                  <ul className="nav-links" style={{ display: 'flex', gap: '1.5em', listStyle: 'none', margin: 0, padding: 0 }}>
+                    <li><Link className="nav-btn" to="/">Home</Link></li>
+                    {!isLoggedIn && <li><Link className="nav-btn" to="/about">About Us</Link></li>}
+                    {!isLoggedIn && <li><Link className="nav-btn" to="/how-it-works">How It Works</Link></li>}
+                    {!isLoggedIn && <li><Link className="nav-btn" to="/faq">FAQ</Link></li>}
+                    {!isLoggedIn && <li><Link className="nav-btn" to="/contact">Contact</Link></li>}
+                    {!isLoggedIn && <li><Link className="nav-btn" to="/register">Register</Link></li>}
+                    <li><Link className="nav-btn" to="/listings">Listings</Link></li>
+                    {isLoggedIn && <li><Link className="nav-btn" to="/create-listing">Create Listing</Link></li>}
+                    {isLoggedIn && <li><Link className="nav-btn" to="/profile">Profile</Link></li>}
+                    {isLoggedIn && <li><Link className="nav-btn" to="/favourites">My Favourites</Link></li>}
+                    {isLoggedIn && <li><Link className="nav-btn" to="/my-rentals">My Rentals</Link></li>}
+                    {!isLoggedIn && <li><Link className="nav-btn" to="/login">Login</Link></li>}
+                    {isLoggedIn && (
+                      <>
+                        <li><button className="nav-btn" onClick={handleLogout}>Logout</button></li>
+                        <li style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <IconButton
+                            aria-label="Notifications"
+                            color="inherit"
+                            onClick={handleNotifIconClick}
+                            aria-describedby={notifPopoverId}
+                            sx={{ p: 0, ml: 1 }}
+                          >
+                            <Badge badgeContent={unreadCount} color="error" overlap="circular" invisible={unreadCount === 0}>
+                              <span style={{ fontSize: 26, color: unreadCount > 0 ? '#1976d2' : '#607D8B', position: 'relative', display: 'inline-block' }}>
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                              </span>
+                            </Badge>
+                          </IconButton>
+                          <Popover
+                            id={notifPopoverId}
+                            open={notifPopoverOpen}
+                            anchorEl={notifAnchorEl}
+                            onClose={handleNotifPopoverClose}
+                            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                            PaperProps={{ sx: { minWidth: 340, maxWidth: 420, p: 2, boxShadow: 4 } }}
+                          >
+                            <div style={{ minHeight: 60, minWidth: 320 }}>
+                              <Typography component="h3" sx={{ color: '#FF9800', fontWeight: 700, fontSize: 20, mb: 1 }}>Notifications</Typography>
+                              {notifLoading ? (
+                                <div style={{ textAlign: 'center', padding: 24 }}><CircularProgress size={28} /></div>
+                              ) : notifError ? (
+                                <div style={{ color: 'red', textAlign: 'center', padding: 12 }}>{notifError}</div>
+                              ) : notifications.length === 0 ? (
+                                <div style={{ color: '#888', textAlign: 'center', padding: 12 }}>No notifications yet.</div>
+                              ) : (
+                                <>
+                                  {notifications.some((n) => !n.read) && (
+                                    <Button onClick={handleMarkAllRead} size="small" sx={{ mb: 1, color: '#1976d2', fontWeight: 700, textTransform: 'none' }}>Mark all as read</Button>
+                                  )}
+                                  <Divider sx={{ mb: 1 }} />
+                                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 320, overflowY: 'auto' }}>
+                                    {notifications.map((n, idx) => (
+                                      <li
+                                        key={n._id || idx}
+                                        style={{
+                                          background: n.read ? '#fff' : '#FFF3E0',
+                                          borderLeft: n.read ? '4px solid #fff' : '4px solid #FF9800',
+                                          borderRadius: 10,
+                                          boxShadow: '0 1px 6px #455a6411',
+                                          marginBottom: 10,
+                                          padding: '0.9em 1em',
+                                          fontSize: 16,
+                                          color: '#444',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 12,
+                                          fontWeight: n.read ? 400 : 700,
+                                          opacity: n.read ? 0.7 : 1,
+                                          outline: n.read ? 'none' : '2px solid #FF9800',
+                                        }}
+                                        tabIndex={0}
+                                        aria-label={n.message}
+                                      >
+                                        <span style={{ fontWeight: 700, color: '#FF9800', minWidth: 70 }}>{n.type}</span>
+                                        <span style={{ flex: 1 }}>{n.message}</span>
+                                        <span style={{ color: '#888', fontSize: 13 }}>{new Date(n.createdAt).toLocaleString()}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <Divider sx={{ my: 1 }} />
+                                  <Button
+                                    component={RouterLink}
+                                    to="/notifications"
+                                    size="small"
+                                    sx={{ color: '#607D8B', fontWeight: 700, textTransform: 'none', width: '100%' }}
+                                    onClick={handleNotifPopoverClose}
                                   >
-                                    <span style={{ fontWeight: 700, color: '#FF9800', minWidth: 70 }}>{n.type}</span>
-                                    <span style={{ flex: 1 }}>{n.message}</span>
-                                    <span style={{ color: '#888', fontSize: 13 }}>{new Date(n.createdAt).toLocaleString()}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                              <Divider sx={{ my: 1 }} />
-                              <Button
-                                component={RouterLink}
-                                to="/notifications"
-                                size="small"
-                                sx={{ color: '#607D8B', fontWeight: 700, textTransform: 'none', width: '100%' }}
-                                onClick={handleNotifPopoverClose}
-                              >
-                                View all notifications
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </Popover>
-                    </li>
-                    <li>
-                      <Link className="nav-btn" to="/messages" title="Messages" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Badge color="primary" badgeContent={unreadCount} invisible={!unreadCount}>
-                          <MailOutlineIcon style={{ fontSize: 22, verticalAlign: 'middle' }} />
-                        </Badge>
-                        <span style={{ display: 'none', marginLeft: 4 }}>Messages</span>
-                      </Link>
-                    </li>
-                  </>
-                )}
-              </ul>
-            </nav>
-          )}
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/how-it-works" element={<HowItWorks />} />
-            <Route path="/faq" element={<FAQ />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/register" element={<RegisterForm />} />
-            <Route path="/login" element={<LoginForm setIsLoggedIn={setIsLoggedIn} />} />
-            <Route path="/listings" element={<Listings />} />
-            <Route path="/create-listing" element={<CreateListingForm />} />
-            <Route path="/listing/:id" element={<ListingDetails />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/:userId" element={<Profile />} />
-            <Route path="/profile/:userId/disputes" element={<ProfileDisputes />} />
-            <Route path="/profile/:userId/reviews" element={<ProfileReviews />} />
-            <Route path="/profile/:userId/transactions" element={<ProfileTransactions />} />
-            <Route path="/favourites" element={<MyFavourites />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/admin-login" element={<AdminLogin />} />
-            <Route path="/admin-register" element={<AdminRegister />} />
-            <Route path="/admin-change-password" element={<AdminChangePassword />} />
-            <Route path="/admin" element={
-              isLoggedIn && isAdmin ? <AdminPanel /> : <AdminLogin />
-            } />
-            <Route path="/edit-listing/:id" element={<EditListingForm />} />
-            <Route path="/my-rentals" element={<MyRentals />} />
-            <Route path="/messages" element={<Messages />} />
-          </Routes>
-          <Snackbar
-            open={snackbar.open}
-            autoHideDuration={3500}
-            onClose={handleSnackbarClose}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-          >
-            {/* Only one child allowed: MuiAlert */}
-            <MuiAlert
-              onClose={handleSnackbarClose}
-              severity={snackbar.severity}
-              sx={{ width: '100%' }}
-              elevation={6}
-              variant="filled"
-            >
-              {snackbar.message}
-            </MuiAlert>
-          </Snackbar>
-        </Router>
+                                    View all notifications
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </Popover>
+                        </li>
+                        <li>
+                          <Link className="nav-btn" to="/messages" title="Messages" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <MessagesBadge />
+                            <span style={{ display: 'none', marginLeft: 4 }}>Messages</span>
+                          </Link>
+                        </li>
+                      </>
+                    )}
+                  </ul>
+                </nav>
+              )}
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/how-it-works" element={<HowItWorks />} />
+                <Route path="/faq" element={<FAQ />} />
+                <Route path="/contact" element={<Contact />} />
+                <Route path="/terms" element={<Terms />} />
+                <Route path="/register" element={<RegisterForm />} />
+                <Route path="/login" element={<LoginForm setIsLoggedIn={setIsLoggedIn} />} />
+                <Route path="/listings" element={<Listings />} />
+                <Route path="/create-listing" element={<CreateListingForm />} />
+                <Route path="/listing/:id" element={<ListingDetails />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/profile/:userId" element={<Profile />} />
+                <Route path="/profile/:userId/disputes" element={<ProfileDisputes />} />
+                <Route path="/profile/:userId/reviews" element={<ProfileReviews />} />
+                <Route path="/profile/:userId/transactions" element={<ProfileTransactions />} />
+                <Route path="/favourites" element={<MyFavourites />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/admin-login" element={<AdminLogin />} />
+                <Route path="/admin-register" element={<AdminRegister />} />
+                <Route path="/admin-change-password" element={<AdminChangePassword />} />
+                <Route path="/admin" element={
+                  isLoggedIn && isAdmin ? <AdminPanel /> : <AdminLogin />
+                } />
+                <Route path="/edit-listing/:id" element={<EditListingForm />} />
+                <Route path="/my-rentals" element={<MyRentals />} />
+                <Route path="/messages" element={<Messages />} />
+              </Routes>
+              <Snackbar
+                open={snackbar.open}
+                autoHideDuration={3500}
+                onClose={handleSnackbarClose}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+              >
+                {/* Only one child allowed: MuiAlert */}
+                <MuiAlert
+                  onClose={handleSnackbarClose}
+                  severity={snackbar.severity}
+                  sx={{ width: '100%' }}
+                  elevation={6}
+                  variant="filled"
+                >
+                  {snackbar.message}
+                </MuiAlert>
+              </Snackbar>
+            </Router>
+          </ConversationsProvider>
+        </MessagesProvider>
       </LoadingContext.Provider>
     </SnackbarContext.Provider>
   );

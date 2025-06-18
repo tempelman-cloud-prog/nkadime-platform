@@ -48,6 +48,8 @@ export interface IRental extends Document {
   lateFee?: number; // Add late fee property
   createdAt: Date;
   updatedAt: Date;
+  deleted?: boolean;
+  deletedAt?: Date;
 }
 
 const RentalSchema = new Schema<IRental>({
@@ -103,6 +105,9 @@ const RentalSchema = new Schema<IRental>({
   },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
+  deleted: { type: Boolean, default: false },
+  deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
-export default mongoose.model<IRental>('Rental', RentalSchema);
+const Rental = mongoose.model<IRental>('Rental', RentalSchema);
+export default Rental;

@@ -22,6 +22,8 @@ const Listings: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [isOwner, setIsOwner] = useState(false);
 
   const fetchListings = useCallback(async () => {
     setLoading(true);
@@ -37,12 +39,14 @@ const Listings: React.FC = () => {
       params.page = page;
       params.limit = pageSize;
       const data = await getListings(params);
-      setListings(data.listings || []);
+      // Filter out deleted listings
+      const activeListings = Array.isArray(data.listings) ? data.listings.filter((l: any) => !l.deleted) : [];
+      setListings(activeListings);
       setTotal(data.total || 0);
       setPageSize(data.pageSize || 12);
       // For category dropdown
-      if (data.listings) {
-        setCategories(Array.from(new Set(data.listings.map((l: any) => l.category).filter(Boolean))));
+      if (activeListings) {
+        setCategories(Array.from(new Set(activeListings.map((l: any) => l.category).filter(Boolean))));
       }
     } catch (err) {
       setError('Failed to load listings. Please try again.');
@@ -70,6 +74,20 @@ const Listings: React.FC = () => {
     }
   }, []);
 
+  // Get current userId and set isOwner
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    let userId = "";
+    if (token) {
+      try {
+        const decoded = jwt_decode<JwtPayload>(token);
+        userId = decoded.userId || decoded.id || "";
+        setCurrentUserId(userId);
+      } catch {}
+    }
+    // listings is an array, so we can't check owner here, but in the ListingDetails page we do
+  }, []);
+
   // Refetch listings when page/tab becomes visible (after edits/deletes elsewhere)
   useEffect(() => {
     const handleVisibility = () => {
@@ -79,6 +97,15 @@ const Listings: React.FC = () => {
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [fetchListings]);
+
+  // Refetch listings when a listing is deleted elsewhere
+  useEffect(() => {
+    const handleListingDeleted = () => {
+      fetchListings();
+    };
+    window.addEventListener('listingDeleted', handleListingDeleted);
+    return () => window.removeEventListener('listingDeleted', handleListingDeleted);
   }, [fetchListings]);
 
   // Search filter (client-side)

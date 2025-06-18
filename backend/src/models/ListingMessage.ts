@@ -6,6 +6,7 @@ export interface IListingMessage extends Document {
   toUser: mongoose.Types.ObjectId;
   message: string;
   createdAt: Date;
+  read: boolean;
 }
 
 const ListingMessageSchema = new Schema<IListingMessage>({
@@ -14,6 +15,7 @@ const ListingMessageSchema = new Schema<IListingMessage>({
   toUser: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   message: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
+  read: { type: Boolean, default: false },
 });
 
 export default mongoose.model<IListingMessage>('ListingMessage', ListingMessageSchema);

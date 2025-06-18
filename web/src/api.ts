@@ -654,3 +654,15 @@ export async function sendUserMessage(toUserId: string, message: string) {
     return { error: 'Unexpected response from server' };
   }
 }
+
+export async function markUserMessagesRead(otherUserId: string) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/messages/user/${otherUserId}/mark-read`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  return res.json();
+}

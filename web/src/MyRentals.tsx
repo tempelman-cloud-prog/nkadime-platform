@@ -12,6 +12,7 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import DescriptionIcon from '@mui/icons-material/Description';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
+import CloseIcon from '@mui/icons-material/Close';
 import Tooltip from '@mui/material/Tooltip';
 import InputAdornment from '@mui/material/InputAdornment';
 import IconButton from '@mui/material/IconButton';
@@ -27,6 +28,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import NoDataSvg from './NoDataSvg'; // You may need to create or replace with a suitable SVG/illustration
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 
 // Add helper to get current userId from JWT
 function getCurrentUserId() {
@@ -342,6 +344,15 @@ const MyRentals: React.FC = () => {
     }
   }, [disputeDialogOpen]);
 
+  // Refetch rental requests when a listing is deleted elsewhere
+  useEffect(() => {
+    const handleListingDeleted = () => {
+      fetchRequests();
+    };
+    window.addEventListener('listingDeleted', handleListingDeleted);
+    return () => window.removeEventListener('listingDeleted', handleListingDeleted);
+  }, []);
+
   const userId = getCurrentUserId();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -391,16 +402,19 @@ const MyRentals: React.FC = () => {
   };
 
   // Handler: Mark as Completed
-  const handleMarkCompleted = async (rentalId: string) => {
+  // Removed unused handleMarkCompleted function
+
+  // Handler: Mark as Returned
+  const handleMarkReturned = async (rentalId: string) => {
     setCompleteLoading(rentalId);
     try {
       const userId = getCurrentUserId();
       const result = await updateRentalStatusWithAudit(rentalId, { status: "completed", userId });
       if (result && !result.error) {
         fetchRequests();
-        setSnackbar({ open: true, message: 'Rental marked as completed!', severity: 'success' });
+        setSnackbar({ open: true, message: 'Rental marked as returned!', severity: 'success' });
       } else {
-        setSnackbar({ open: true, message: result.error || 'Failed to mark as completed', severity: 'error' });
+        setSnackbar({ open: true, message: result.error || 'Failed to mark as returned', severity: 'error' });
       }
     } catch {
       setSnackbar({ open: true, message: 'Network or server error. Please try again.', severity: 'error' });
@@ -462,7 +476,7 @@ const MyRentals: React.FC = () => {
                           sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
                           aria-label={`Status: ${req.status}`}
                         />
-                        {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                        {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId) && req.owner && (req.owner._id !== userId && req.owner !== userId)) && (
                           <Button
                             variant="contained"
                             color="warning"
@@ -492,17 +506,32 @@ const MyRentals: React.FC = () => {
                       {/* Rental period, price, and late info */}
                       {renderRentalInfo(req)}
                       {(["paid", "active", "in-progress"].includes(req.status) && ((req.owner?._id === userId) || (req.renter?._id === userId))) && (
-                        <Tooltip title="Mark as Completed">
+                        <Tooltip title="Mark as Returned">
                           <Button
                             variant="contained"
                             color="primary"
                             size="small"
                             sx={{ ml: 1, fontWeight: 700, borderRadius: 2, mt: 1 }}
-                            onClick={() => handleMarkCompleted(req._id)}
+                            onClick={() => handleMarkReturned(req._id)}
                             disabled={completeLoading === req._id}
-                            aria-label="Mark as Completed"
+                            aria-label="Mark as Returned"
                           >
-                            <DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> {completeLoading === req._id ? 'Completing...' : 'Mark as Completed'}
+                            <DoneAllIcon sx={{ fontSize: 18, mr: 0.5 }} /> {completeLoading === req._id ? 'Completing...' : 'Mark as Returned'}
+                          </Button>
+                        </Tooltip>
+                      )}
+                      {/* Raise Dispute button: only if not completed/cancelled/declined and no dispute exists */}
+                      {['pending','approved','paid','active','in-progress'].includes(req.status) && !req.dispute && req.owner && (req.owner._id !== userId && req.owner !== userId) && (
+                        <Tooltip title="Raise Dispute">
+                          <Button
+                            variant="contained"
+                            color="error"
+                            size="small"
+                            sx={{ fontWeight: 700, borderRadius: 2 }}
+                            onClick={() => handleOpenDisputeDialog(req)}
+                            aria-label="Raise Dispute"
+                          >
+                            Raise Dispute
                           </Button>
                         </Tooltip>
                       )}
@@ -537,7 +566,7 @@ const MyRentals: React.FC = () => {
                             color: req.status === 'pending' ? '#FF9800' : req.status === 'approved' ? '#388E3C' : '#C62828',
                             borderRadius: 8, padding: '4px 14px', fontWeight: 700, fontSize: 15
                           }}>{req.status.charAt(0).toUpperCase() + req.status.slice(1)}</span>
-                          {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                          {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId) && req.owner && (req.owner._id !== userId && req.owner !== userId)) && (
                             <Button
                               variant="contained"
                               color="warning"
@@ -554,27 +583,35 @@ const MyRentals: React.FC = () => {
                         </td>
                         <td style={{ padding: 8 }}>{new Date(req.createdAt).toLocaleString()}</td>
                         <td style={{ padding: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                             {/* Export/Print actions */}
                             <Tooltip title="View PDF">
-                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleViewPdf(req._id)}>
-                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton color="primary" size="small" onClick={() => handleViewPdf(req._id)} aria-label="View PDF">
+                                  <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             <Tooltip title="Download PDF">
-                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'}>
-                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton color="primary" size="small" onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'} aria-label="Download PDF">
+                                  <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             <Tooltip title="Export CSV">
-                              <button style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'}>
-                                <TableChartIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton color="success" size="small" onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'} aria-label="Export CSV">
+                                  <TableChartIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             <Tooltip title="Export JSON">
-                              <button style={{ background: '#FFA000', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'}>
-                                <DescriptionIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton sx={{ color: '#FFA000' }} size="small" onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'} aria-label="Export JSON">
+                                  <DescriptionIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             {exportError && (
                               <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
@@ -583,26 +620,58 @@ const MyRentals: React.FC = () => {
                             {req.status === 'pending' && getOwnerId(req.owner) === userId && req.renter?._id !== userId && (
                               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                                 <Tooltip title="Approve Request">
-                                  <button
-                                    style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
-                                    onClick={() => handleApprove(req._id)}
-                                    disabled={actionLoading === req._id}
-                                  >
-                                    {actionLoading === req._id ? 'Approving...' : 'Approve'}
-                                  </button>
+                                  <span>
+                                    <Button
+                                      variant="contained"
+                                      color="success"
+                                      size="small"
+                                      sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 110, display: 'flex', alignItems: 'center', gap: 1 }}
+                                      onClick={() => handleApprove(req._id)}
+                                      disabled={actionLoading === req._id}
+                                      startIcon={<DoneAllIcon />}
+                                      aria-label="Approve Request"
+                                    >
+                                      {actionLoading === req._id ? 'Approving...' : 'Approve'}
+                                    </Button>
+                                  </span>
                                 </Tooltip>
                                 <Tooltip title="Decline Request">
-                                  <button
-                                    style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
-                                    onClick={() => handleDecline(req._id)}
-                                    disabled={actionLoading === req._id}
-                                  >
-                                    {actionLoading === req._id ? 'Declining...' : 'Decline'}
-                                  </button>
+                                  <span>
+                                    <Button
+                                      variant="contained"
+                                      color="error"
+                                      size="small"
+                                      sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 110, display: 'flex', alignItems: 'center', gap: 1 }}
+                                      onClick={() => handleDecline(req._id)}
+                                      disabled={actionLoading === req._id}
+                                      startIcon={<CloseIcon />}
+                                      aria-label="Decline Request"
+                                    >
+                                      {actionLoading === req._id ? 'Declining...' : 'Decline'}
+                                    </Button>
+                                  </span>
                                 </Tooltip>
                               </div>
                             )}
-                          </div>
+                            {/* Raise Dispute actions: only for non-completed requests and if no dispute exists */}
+                            {req.status !== 'completed' && req.status !== 'cancelled' && !req.dispute && (
+                              <Tooltip title="Raise Dispute">
+                                <span>
+                                  <Button
+                                    variant="contained"
+                                    color="error"
+                                    size="small"
+                                    sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 130, display: 'flex', alignItems: 'center', gap: 1 }}
+                                    onClick={() => handleOpenDisputeDialog(req)}
+                                    aria-label="Raise Dispute"
+                                    startIcon={<ReportProblemIcon />}
+                                  >
+                                    Raise Dispute
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            )}
+                          </Box>
                         </td>
                       </tr>
                     ))}
@@ -653,7 +722,7 @@ const MyRentals: React.FC = () => {
                           sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
                           aria-label={`Status: ${req.status}`}
                         />
-                        {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                        {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId) && req.owner && (req.owner._id !== userId && req.owner !== userId)) && (
                           <Tooltip title="Pay">
                             <Button
                               variant="contained"
@@ -688,24 +757,56 @@ const MyRentals: React.FC = () => {
                         {req.status === 'pending' && getOwnerId(req.owner) === userId && req.renter?._id !== userId && (
                           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                             <Tooltip title="Approve Request">
-                              <button
-                                style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
-                                onClick={() => handleApprove(req._id)}
-                                disabled={actionLoading === req._id}
-                              >
-                                {actionLoading === req._id ? 'Approving...' : 'Approve'}
-                              </button>
+                              <span>
+                                <Button
+                                  variant="contained"
+                                  color="success"
+                                  size="small"
+                                  sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 110, display: 'flex', alignItems: 'center', gap: 1 }}
+                                  onClick={() => handleApprove(req._id)}
+                                  disabled={actionLoading === req._id}
+                                  startIcon={<DoneAllIcon />}
+                                  aria-label="Approve Request"
+                                >
+                                  {actionLoading === req._id ? 'Approving...' : 'Approve'}
+                                </Button>
+                              </span>
                             </Tooltip>
                             <Tooltip title="Decline Request">
-                              <button
-                                style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
-                                onClick={() => handleDecline(req._id)}
-                                disabled={actionLoading === req._id}
-                              >
-                                {actionLoading === req._id ? 'Declining...' : 'Decline'}
-                              </button>
+                              <span>
+                                <Button
+                                  variant="contained"
+                                  color="error"
+                                  size="small"
+                                  sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 110, display: 'flex', alignItems: 'center', gap: 1 }}
+                                  onClick={() => handleDecline(req._id)}
+                                  disabled={actionLoading === req._id}
+                                  startIcon={<CloseIcon />}
+                                  aria-label="Decline Request"
+                                >
+                                  {actionLoading === req._id ? 'Declining...' : 'Decline'}
+                                </Button>
+                              </span>
                             </Tooltip>
                           </div>
+                        )}
+                        {/* Raise Dispute actions: only for non-completed requests and if no dispute exists */}
+                        {req.status !== 'completed' && req.status !== 'cancelled' && !req.dispute && req.owner && (req.owner._id !== userId && req.owner !== userId) && (
+                          <Tooltip title="Raise Dispute">
+                            <span>
+                              <Button
+                                variant="contained"
+                                color="error"
+                                size="small"
+                                sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 130, display: 'flex', alignItems: 'center', gap: 1 }}
+                                onClick={() => handleOpenDisputeDialog(req)}
+                                aria-label="Raise Dispute"
+                                startIcon={<ReportProblemIcon />}
+                              >
+                                Raise Dispute
+                              </Button>
+                            </span>
+                          </Tooltip>
                         )}
                       </Box>
                     </Box>
@@ -749,7 +850,7 @@ const MyRentals: React.FC = () => {
                             sx={{ fontWeight: 700, fontSize: 15, px: 1.5, mr: 1 }}
                             aria-label={`Status: ${req.status}`}
                           />
-                          {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId)) && (
+                          {(req.status === 'approved' && !req.payment && (req.renter === userId || req.renter?._id === userId) && req.owner && (req.owner._id !== userId && req.owner !== userId)) && (
                             <Button
                               variant="contained"
                               color="warning"
@@ -768,27 +869,35 @@ const MyRentals: React.FC = () => {
                         </td>
                         <td style={{ padding: 8 }}>{new Date(req.createdAt).toLocaleString()}</td>
                         <td style={{ padding: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                             {/* Export/Print actions */}
                             <Tooltip title="View PDF">
-                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleViewPdf(req._id)}>
-                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton color="primary" size="small" onClick={() => handleViewPdf(req._id)} aria-label="View PDF">
+                                  <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             <Tooltip title="Download PDF">
-                              <button style={{ background: '#1976D2', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'}>
-                                <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton color="primary" size="small" onClick={() => handleExportAudit(req._id, 'pdf')} disabled={exportLoading === req._id + 'pdf'} aria-label="Download PDF">
+                                  <PictureAsPdfIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             <Tooltip title="Export CSV">
-                              <button style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'}>
-                                <TableChartIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton color="success" size="small" onClick={() => handleExportAudit(req._id, 'csv')} disabled={exportLoading === req._id + 'csv'} aria-label="Export CSV">
+                                  <TableChartIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             <Tooltip title="Export JSON">
-                              <button style={{ background: '#FFA000', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'}>
-                                <DescriptionIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                              </button>
+                              <span>
+                                <IconButton sx={{ color: '#FFA000' }} size="small" onClick={() => handleExportAudit(req._id, 'json')} disabled={exportLoading === req._id + 'json'} aria-label="Export JSON">
+                                  <DescriptionIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             {exportError && (
                               <Tooltip title={exportError}><InfoOutlinedIcon sx={{ color: '#C62828', fontSize: 20, ml: 1 }} /></Tooltip>
@@ -797,26 +906,58 @@ const MyRentals: React.FC = () => {
                             {req.status === 'pending' && getOwnerId(req.owner) === userId && req.renter?._id !== userId && (
                               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                                 <Tooltip title="Approve Request">
-                                  <button
-                                    style={{ background: '#388E3C', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
-                                    onClick={() => handleApprove(req._id)}
-                                    disabled={actionLoading === req._id}
-                                  >
-                                    {actionLoading === req._id ? 'Approving...' : 'Approve'}
-                                  </button>
+                                  <span>
+                                    <Button
+                                      variant="contained"
+                                      color="success"
+                                      size="small"
+                                      sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 110, display: 'flex', alignItems: 'center', gap: 1 }}
+                                      onClick={() => handleApprove(req._id)}
+                                      disabled={actionLoading === req._id}
+                                      startIcon={<DoneAllIcon />}
+                                      aria-label="Approve Request"
+                                    >
+                                      {actionLoading === req._id ? 'Approving...' : 'Approve'}
+                                    </Button>
+                                  </span>
                                 </Tooltip>
                                 <Tooltip title="Decline Request">
-                                  <button
-                                    style={{ background: '#C62828', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontWeight: 700, fontSize: 16, cursor: actionLoading === req._id ? 'not-allowed' : 'pointer', opacity: actionLoading === req._id ? 0.7 : 1 }}
-                                    onClick={() => handleDecline(req._id)}
-                                    disabled={actionLoading === req._id}
-                                  >
-                                    {actionLoading === req._id ? 'Declining...' : 'Decline'}
-                                  </button>
+                                  <span>
+                                    <Button
+                                      variant="contained"
+                                      color="error"
+                                      size="small"
+                                      sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 110, display: 'flex', alignItems: 'center', gap: 1 }}
+                                      onClick={() => handleDecline(req._id)}
+                                      disabled={actionLoading === req._id}
+                                      startIcon={<CloseIcon />}
+                                      aria-label="Decline Request"
+                                    >
+                                      {actionLoading === req._id ? 'Declining...' : 'Decline'}
+                                    </Button>
+                                  </span>
                                 </Tooltip>
                               </div>
                             )}
-                          </div>
+                            {/* Raise Dispute actions: only for non-completed requests and if no dispute exists */}
+                            {req.status !== 'completed' && req.status !== 'cancelled' && !req.dispute && req.owner && (req.owner._id !== userId && req.owner !== userId) && (
+                              <Tooltip title="Raise Dispute">
+                                <span>
+                                  <Button
+                                    variant="contained"
+                                    color="error"
+                                    size="small"
+                                    sx={{ fontWeight: 700, borderRadius: 2, fontSize: 16, px: 2, py: 1, minWidth: 130, display: 'flex', alignItems: 'center', gap: 1 }}
+                                    onClick={() => handleOpenDisputeDialog(req)}
+                                    aria-label="Raise Dispute"
+                                    startIcon={<ReportProblemIcon />}
+                                  >
+                                    Raise Dispute
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            )}
+                          </Box>
                         </td>
                       </tr>
                     ))}

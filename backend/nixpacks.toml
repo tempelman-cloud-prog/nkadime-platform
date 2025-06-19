@@ -1,10 +1,11 @@
 [phases.build]
 cmds = [
-  "pwd",
+  "echo 'DEBUG: Build phase running!'",
   "ls -l",
   "npm install -g typescript",
   "npm ci",
   "ls -l src",
+  "false", // This will always fail and should show up in the logs
   "tsc",
   "ls -l dist"
 ]

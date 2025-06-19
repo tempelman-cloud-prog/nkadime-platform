@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/app.js",
     "build": "npx tsc",
-    "postinstall": "chmod +x ./node_modules/.bin/tsc && npx tsc",
+    "postinstall": "npx tsc",
     "test": "jest"
   },
   "dependencies": {

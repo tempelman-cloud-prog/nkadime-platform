@@ -5,7 +5,8 @@ cmds = [
   "npm install -g typescript",
   "npm ci",
   "ls -l src",
-  "false", // This will always fail and should show up in the logs
+  # This will always fail and should show up in the logs
+  "false",
   "tsc",
   "ls -l dist"
 ]

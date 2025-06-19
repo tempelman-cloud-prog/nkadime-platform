@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ["npm install -g typescript", "npm ci", "tsc"]
+
+[phases.start]
+cmds = ["node dist/app.js"]

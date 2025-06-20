@@ -55,6 +55,7 @@ const upload = multer({ storage });
 
 // Auth routes
 router.post('/auth/register', register);
+router.post('/register', register); // Alias for compatibility with frontend
 router.post('/auth/login', login);
 // Change admin password route
 // router.post('/auth/change-password', authenticateToken, changePassword); // Removed: not implemented/exported

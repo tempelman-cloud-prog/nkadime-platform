@@ -29,11 +29,12 @@ export const MessagesProvider = ({ children }: { children: ReactNode }) => {
   const subscribers = useRef<((msg: Message) => void)[]>([]);
 
   useEffect(() => {
-    const ws = new WebSocket(
-      window.location.hostname === "localhost"
+    // Use env var if set, otherwise pick correct protocol/domain
+    const wsUrl = process.env.REACT_APP_WS_URL ||
+      (window.location.hostname === "localhost"
         ? "ws://localhost:5000/ws"
-        : "wss://nkadime-platform.onrender.com/ws"
-    );
+        : "wss://nkadime-platform.onrender.com/ws");
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => {
       setWsConnected(true);

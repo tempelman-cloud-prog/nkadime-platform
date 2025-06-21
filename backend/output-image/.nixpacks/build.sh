@@ -1,0 +1,1 @@
+docker build output-image -f output-image\.nixpacks\Dockerfile -t 0d9183dc-2fcb-4235-a10c-534a950d7ce9 --progress=plain --build-arg CI=true --build-arg NIXPACKS_METADATA=node --build-arg NODE_ENV=production --build-arg NPM_CONFIG_PRODUCTION=false

@@ -24,6 +24,8 @@ import Switch from '@mui/material/Switch';
 import { useSnackbar } from "./App";
 import Rating from '@mui/material/Rating';
 
+const API_URL = process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com";
+
 interface JwtPayload {
   userId?: string;
   id?: string;
@@ -52,6 +54,7 @@ interface Review {
   listing: string;
   rental?: string; // Added for rental-based reviews
   reviewedUser?: string; // Added for user-to-user reviews
+  images?: string[]; // Allow images on Review
 }
 
 const Profile: React.FC = () => {
@@ -80,6 +83,8 @@ const Profile: React.FC = () => {
   const [listingToDelete, setListingToDelete] = useState<Listing | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [mapPosition, setMapPosition] = useState<[number, number] | null>(null);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const navigate = useNavigate();
   const { showMessage } = useSnackbar();
 
@@ -270,7 +275,7 @@ const Profile: React.FC = () => {
               profilePic
                 ? profilePic.startsWith("http")
                   ? profilePic
-                  : `${process.env.REACT_APP_API_URL || "http://localhost:5000"}/${profilePic.replace(/^\/+/,'')}`
+                  : `${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}/${profilePic.replace(/^\/+/,'')}`
                 : undefined
             }
             sx={{ width: 110, height: 110, fontSize: 48, bgcolor: "#fff", color: "#0a2342", boxShadow: 2, border: '3px solid #fff' }}
@@ -483,9 +488,32 @@ const Profile: React.FC = () => {
                 By: {typeof r.reviewer === 'object' && r.reviewer !== null && 'name' in r.reviewer ? (r.reviewer as any).name : r.reviewer}
               </div>
               <div style={{ color: '#888', fontSize: 12 }}>{new Date(r.createdAt).toLocaleString()}</div>
+              {/* Review images - show only if available and not the owner's review */}
+              {r.images && r.images.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                  {r.images.map((img: string, idx: number) => (
+                    <img
+                      key={idx}
+                      src={img.startsWith('http') ? img : `${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`}
+                      alt={`review-img-${idx}`}
+                      style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', transition: 'transform 0.2s' }}
+                      onClick={() => { setLightboxImg(img.startsWith('http') ? img : `${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`); setLightboxOpen(true); }}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLightboxImg(img.startsWith('http') ? img : `${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`); setLightboxOpen(true); } }}
+                      tabIndex={0}
+                    />
+                  ))}
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        <Dialog open={lightboxOpen} onClose={() => setLightboxOpen(false)} maxWidth="md" aria-label="Image preview dialog">
+          <DialogContent sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', bgcolor: '#222' }}>
+            {lightboxImg && (
+              <img src={lightboxImg} alt="Preview" style={{ maxWidth: '80vw', maxHeight: '80vh', borderRadius: 12, boxShadow: '0 4px 32px #000a' }} />
+            )}
+          </DialogContent>
+        </Dialog>
       </Box>
       {/* User Listings Section */}
       <Box mt={4}>
@@ -513,18 +541,17 @@ const Profile: React.FC = () => {
               <Grid item xs={12} sm={6} md={4} key={listing._id}>
                 <Box sx={{ background: '#fff', borderRadius: 3, p: 2, boxShadow: 1, minHeight: 180, position: 'relative' }}>
                   <Box sx={{ width: '100%', height: 120, mb: 1, borderRadius: 2, overflow: 'hidden', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img
-                      src={
-                        listing.images && listing.images.length > 0
-                          ? (listing.images[0].startsWith("http")
-                              ? listing.images[0]
-                              : `${process.env.REACT_APP_API_URL || "http://localhost:5000"}/${listing.images[0].replace(/^\/+/,'')}`
-                            )
-                          : (process.env.PUBLIC_URL + '/images/home items.png')
-                      }
-                      alt={listing.title}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
+                    {listing.images && listing.images.length > 0 && (
+                      <img
+                        src={
+                          listing.images[0].startsWith("http")
+                            ? listing.images[0]
+                            : `${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}/${listing.images[0].replace(/^\/+/,'')}`
+                        }
+                        alt={listing.title}
+                        style={{ width: '100%', height: 190, objectFit: 'cover', borderTopLeftRadius: 18, borderTopRightRadius: 18 }}
+                      />
+                    )}
                   </Box>
                   <Typography variant="subtitle1" fontWeight={700} color="#0a2342">{listing.title}</Typography>
                   <Typography variant="body2" color="text.secondary">{listing.category}</Typography>

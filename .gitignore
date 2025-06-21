@@ -52,6 +52,9 @@ backend/node_modules/
 backend/dist/
 backend/build/
 backend/uploads/
+backend/log/
+backend/data/
+backend/.env
 
 # Web
 web/node_modules/

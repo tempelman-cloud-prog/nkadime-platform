@@ -29,7 +29,11 @@ export const MessagesProvider = ({ children }: { children: ReactNode }) => {
   const subscribers = useRef<((msg: Message) => void)[]>([]);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:5000/ws');
+    const ws = new WebSocket(
+      window.location.hostname === "localhost"
+        ? "ws://localhost:5000/ws"
+        : "wss://nkadime-platform.onrender.com/ws"
+    );
     wsRef.current = ws;
     ws.onopen = () => {
       setWsConnected(true);

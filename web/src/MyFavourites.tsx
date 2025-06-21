@@ -109,7 +109,7 @@ const MyFavourites: React.FC = () => {
             </button>
             {listing.images && listing.images.length > 0 && (
               <img
-                src={`http://localhost:5000${listing.images[0]}`}
+                src={`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${listing.images[0]}`}
                 alt={listing.title}
                 style={{ width: '100%', height: 190, objectFit: 'cover', borderTopLeftRadius: 18, borderTopRightRadius: 18 }}
               />

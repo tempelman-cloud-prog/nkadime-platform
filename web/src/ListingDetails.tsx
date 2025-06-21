@@ -464,13 +464,13 @@ const ListingDetails: React.FC = () => {
             {listing.images.map((img, idx) => (
               <img
                 key={idx}
-                src={`http://localhost:5000${img}`}
+                src={`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`}
                 alt={listing.title + ' image ' + (idx + 1)}
                 style={{ width: 220, height: 220, objectFit: 'cover', borderRadius: 16, cursor: 'pointer', boxShadow: isLoggedIn ? '0 4px 20px #455a6422' : '0 4px 20px #000a', border: '2px solid #eee', transition: 'box-shadow 0.2s' }}
                 tabIndex={0}
                 aria-label={`Preview image ${idx + 1} of ${listing.title}`}
-                onClick={() => { setLightboxImg(`http://localhost:5000${img}`); setLightboxOpen(true); }}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLightboxImg(`http://localhost:5000${img}`); setLightboxOpen(true); } }}
+                onClick={() => { setLightboxImg(`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`); setLightboxOpen(true); }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLightboxImg(`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`); setLightboxOpen(true); } }}
               />
             ))}
           </div>
@@ -927,21 +927,21 @@ const ListingDetails: React.FC = () => {
               >
                 {messageLoading ? <CircularProgress size={20} color="inherit" /> : 'Send'}
               </button>
+              {(messageError || messageSuccess) && (
+                <div style={{
+                  padding: '10px 20px',
+                  color: messageError ? '#dc2626' : '#16a34a',
+                  fontWeight: 500,
+                  fontSize: 14,
+                  background: '#f8fafc',
+                  borderTop: '1px solid #e5e7eb',
+                  textAlign: 'center',
+                  transition: 'opacity 0.3s',
+                }}>
+                  {messageError || messageSuccess}
+                </div>
+              )}
             </div>
-            {(messageError || messageSuccess) && (
-              <div style={{
-                padding: '10px 20px',
-                color: messageError ? '#dc2626' : '#16a34a',
-                fontWeight: 500,
-                fontSize: 14,
-                background: '#f8fafc',
-                borderTop: '1px solid #e5e7eb',
-                textAlign: 'center',
-                transition: 'opacity 0.3s',
-              }}>
-                {messageError || messageSuccess}
-              </div>
-            )}
           </div>
         </div>
       )}

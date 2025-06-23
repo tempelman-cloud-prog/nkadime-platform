@@ -113,7 +113,7 @@ const Profile: React.FC = () => {
       }
       setUserId(uid!);
       // Fetch user profile from backend for location and profilePic
-      const userRes = await fetch(`http://localhost:5000/api/users/${uid}`);
+      const userRes = await fetch(`${process.env.REACT_APP_API_BASE || "https://nkadime-platform.onrender.com/api"}/users/${uid}`);
       const userData = await userRes.json();
       setName(userData.name || "User");
       setLocation(userData.location || "");

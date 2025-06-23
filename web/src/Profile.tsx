@@ -24,8 +24,6 @@ import Switch from '@mui/material/Switch';
 import { useSnackbar } from "./App";
 import Rating from '@mui/material/Rating';
 
-const API_URL = process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com";
-
 interface JwtPayload {
   userId?: string;
   id?: string;

@@ -205,7 +205,7 @@ export async function removeFavorite(userId: string, listingId: string) {
 
 export async function createNotification(user: string, type: string, message: string, data?: any) {
   const token = localStorage.getItem("token");
-  const res = await fetch("http://localhost:5000/api/notifications", {
+  const res = await fetch(`${API_BASE}/notifications`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -218,7 +218,7 @@ export async function createNotification(user: string, type: string, message: st
 
 export async function getNotifications(userId: string) {
   const token = localStorage.getItem("token");
-  const res = await fetch(`http://localhost:5000/api/notifications/${userId}`, {
+  const res = await fetch(`${API_BASE}/notifications/${userId}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     }
@@ -228,7 +228,7 @@ export async function getNotifications(userId: string) {
 
 export async function markNotificationsRead(userId: string) {
   const token = localStorage.getItem("token");
-  const res = await fetch(`http://localhost:5000/api/notifications/user/${userId}/read`, {
+  const res = await fetch(`${API_BASE}/notifications/user/${userId}/read`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",

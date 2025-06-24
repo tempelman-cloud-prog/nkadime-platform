@@ -659,7 +659,7 @@ export const addRentalPayment = async (req: Request, res: Response) => {
     // Create notifications for both owner and renter
     const Notification = (await import('./Notification')).default;
     // Get owner and renter IDs
-    const ownerId = rental.owner && typeof rental.owner === 'object' && 'id' in rental.owner ? rental.owner.id : rental.owner.toString();
+    const ownerId = rental.owner && typeof rental.owner === 'object' && 'id' in rental.owner ? rental.owner.id : rental
     const renterId = rental.renter && typeof rental.renter === 'object' && 'id' in rental.renter ? rental.renter.id : rental.renter.toString();
     // Get listing title if populated
     let listingTitle = '';
@@ -1195,6 +1195,31 @@ export const adminDeleteUser = async (req: Request, res: Response) => {
     // Finally, delete the user
     await User.findByIdAndDelete(userId);
     res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: message });
+  }
+};
+
+// Get all received messages (listing-based and direct)
+export const getReceivedMessages = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    if (!userId) return res.status(401).json({ error: 'User not authenticated' });
+    // Fetch direct user-to-user messages
+    const userMessages = await UserMessage.find({ toUser: userId })
+      .populate('fromUser', 'name email')
+      .sort({ createdAt: -1 });
+    // Fetch listing-based messages
+    const listingMessages = await ListingMessage.find({ toUser: userId })
+      .populate('fromUser', 'name email')
+      .populate('listing', 'title')
+      .sort({ createdAt: -1 });
+    // Combine and sort all messages by createdAt descending
+    const allMessages = [...userMessages, ...listingMessages].sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    res.json({ messages: allMessages });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });

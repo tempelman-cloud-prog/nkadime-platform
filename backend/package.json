@@ -5,7 +5,8 @@
   "main": "src/app.ts",
   "scripts": {
     "start": "node dist/app.js",
-    "build": "tsc"
+    "build": "tsc",
+    "postbuild": "cp src/gcs-key-loader.js dist/"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",

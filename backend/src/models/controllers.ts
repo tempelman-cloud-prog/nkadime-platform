@@ -65,6 +65,8 @@ import { User, Listing, Favorite, Review, Notification, Rental } from './index';
 import mongoose from 'mongoose';
 import ListingMessage from './ListingMessage';
 import { UserMessage } from './index';
+import { Storage } from '@google-cloud/storage';
+const { keyPath, bucketName } = require('../gcs-key-loader.js');
 
 interface MulterRequest extends Request {
   files?: Express.Multer.File[];
@@ -93,6 +95,19 @@ export const getUser = async (req: Request, res: Response) => {
   }
 };
 
+// Helper to upload a file buffer to GCS and return the public URL
+async function uploadBufferToGCS(buffer: Buffer, originalname: string, mimetype: string): Promise<string> {
+  const storage = new Storage({ keyFilename: keyPath });
+  const bucket = storage.bucket(bucketName); // Use configurable bucket name
+  const gcsFile = bucket.file(Date.now() + '-' + originalname);
+  await gcsFile.save(buffer, {
+    resumable: false,
+    contentType: mimetype,
+    public: false, // set to true if you want public access
+  });
+  return `https://storage.googleapis.com/${bucket.name}/${gcsFile.name}`;
+}
+
 // Update User Profile
 export const updateUser = async (req: Request, res: Response) => {
   try {
@@ -103,7 +118,8 @@ export const updateUser = async (req: Request, res: Response) => {
     if (typeof req.body.location === 'string') updateData.location = req.body.location;
     if (typeof req.body.bio === 'string') updateData.bio = req.body.bio; // Add bio update
     if (req.file) {
-      updateData.profilePic = '/uploads/' + req.file.filename;
+      // Upload profilePic to GCS
+      updateData.profilePic = await uploadBufferToGCS(req.file.buffer, req.file.originalname, req.file.mimetype);
     }
     // Add support for mapPosition and showMapLocation
     if (req.body.mapPosition) {
@@ -1166,69 +1182,19 @@ export const adminDeleteUser = async (req: Request, res: Response) => {
     const userId = req.params.id;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.isAdmin) {
-      return res.status(400).json({ error: 'Cannot delete admin user' });
-    }
-    // Delete user and their listings, rentals, reviews, favorites, notifications, messages
-    await Promise.all([
-      User.findByIdAndDelete(userId),
-      Listing.deleteMany({ owner: userId }),
-      Rental.deleteMany({ $or: [{ renter: userId }, { owner: userId }] }),
-      Review.deleteMany({ $or: [{ reviewer: userId }, { reviewedUser: userId }] }),
-      Favorite.deleteMany({ user: userId }),
-      Notification.deleteMany({ user: userId }),
-      UserMessage.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] })
-    ]);
+    // Prevent deleting admin users
+    if (user.isAdmin) return res.status(400).json({ error: 'Cannot delete admin user' });
+    // Soft delete all listings owned by the user
+    await Listing.updateMany({ owner: userId }, { deleted: true, deletedAt: new Date() });
+    // Optionally: Remove user's favorites, reviews, and rentals (or anonymize)
+    await Favorite.deleteMany({ user: userId });
+    await Review.deleteMany({ reviewer: userId });
+    await Rental.deleteMany({ $or: [{ renter: userId }, { owner: userId }] });
+    await UserMessage.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] });
+    await ListingMessage.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] });
+    // Finally, delete the user
+    await User.findByIdAndDelete(userId);
     res.json({ success: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(400).json({ error: message });
-  }
-};
-
-// Get all messages received by the current user (listing-based and direct)
-export const getReceivedMessages = async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ error: 'User not authenticated' });
-    // Listing-based messages where user is recipient
-    const listingMsgs = await ListingMessage.find({ toUser: userId })
-      .populate('fromUser', 'name email profilePic')
-      .populate('toUser', 'name email profilePic')
-      .populate('listing', 'title');
-    // Direct user-to-user messages where user is recipient
-    const userMsgs = await UserMessage.find({ toUser: userId })
-      .populate('fromUser', 'name email profilePic')
-      .populate('toUser', 'name email profilePic');
-    // Combine and sort by createdAt descending
-    const allMsgs = [
-      ...listingMsgs.map(m => ({ ...m.toObject(), type: 'listing' })),
-      ...userMsgs.map(m => ({ ...m.toObject(), type: 'direct' }))
-    ];
-    allMsgs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    // Group by conversation (listing or user)
-    const convMap: { [key: string]: any } = {};
-    allMsgs.forEach((msg: any) => {
-      // Use listing._id for listing messages, or fromUser._id for direct messages
-      const convId = msg.listing?._id?.toString() || msg.fromUser?._id?.toString();
-      if (!convId) return;
-      if (!convMap[convId]) {
-        convMap[convId] = { messages: [], unreadCount: 0 };
-      }
-      convMap[convId].messages.push(msg);
-      if (msg.read === false) convMap[convId].unreadCount += 1;
-    });
-    // Flatten to array, add unreadCount to each message
-    const result: any[] = [];
-    Object.values(convMap).forEach((conv: any) => {
-      conv.messages.forEach((msg: any) => {
-        result.push({ ...msg, unreadCount: conv.unreadCount });
-      });
-    });
-    // Sort again by createdAt desc
-    result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: message });

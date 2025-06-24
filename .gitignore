@@ -61,3 +61,6 @@ web/node_modules/
 web/dist/
 web/build/
 web/uploads/
+
+# Google Cloud service account key (never commit this!)
+gcs-key.json

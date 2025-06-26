@@ -172,7 +172,12 @@ export const createListing = async (req: MulterRequest, res: Response) => {
     // Handle image uploads from multer
     let images: string[] = [];
     if (req.files && Array.isArray(req.files)) {
-      images = (req.files as Express.Multer.File[]).map(file => '/uploads/' + file.filename);
+      // Upload each image to GCS and get the public URL
+      images = await Promise.all(
+        (req.files as Express.Multer.File[]).map(file =>
+          uploadBufferToGCS(file.buffer, file.originalname, file.mimetype)
+        )
+      );
     }
     // Merge images with other form data
     const listingData = { ...req.body, images };
@@ -233,8 +238,12 @@ export const updateListing = async (req: MulterRequest, res: Response) => {
     if (typeof req.body.available !== 'undefined') updateData.available = req.body.available;
     // Handle new image uploads
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-      // Add new images to the images array
-      const newImages = (req.files as Express.Multer.File[]).map(file => '/uploads/' + file.filename);
+      // Upload each new image to GCS and get the public URL
+      const newImages = await Promise.all(
+        (req.files as Express.Multer.File[]).map(file =>
+          uploadBufferToGCS(file.buffer, file.originalname, file.mimetype)
+        )
+      );
       // Optionally: merge with existing images if you want to keep old ones
       updateData.images = newImages;
     }
@@ -303,7 +312,12 @@ export const addReview = async (req: MulterRequest, res: Response) => {
   try {
     let images: string[] = [];
     if (req.files && Array.isArray(req.files)) {
-      images = (req.files as Express.Multer.File[]).map(file => '/uploads/' + file.filename);
+      // Upload each review image to GCS and get the public URL
+      images = await Promise.all(
+        (req.files as Express.Multer.File[]).map(file =>
+          uploadBufferToGCS(file.buffer, file.originalname, file.mimetype)
+        )
+      );
     }
     const reviewData = { ...req.body, images };
     // At least one of listing or reviewedUser must be present

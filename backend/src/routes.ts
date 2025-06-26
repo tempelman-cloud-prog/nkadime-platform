@@ -33,25 +33,8 @@ import { authenticateToken } from './middleware/auth'; // <-- Add this import
 
 const router = Router();
 
-// Set up multer for image uploads
-const storage = multer.diskStorage({
-  destination: function (
-    req: import('express').Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null, destination: string) => void
-  ) {
-    cb(null, path.join(__dirname, '../../uploads'));
-  },
-  filename: function (
-    req: import('express').Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null, filename: string) => void
-  ) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
-  }
-});
-const upload = multer({ storage });
+// Set up multer for image uploads (use memory storage for GCS uploads)
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Auth routes
 router.post('/auth/register', register);

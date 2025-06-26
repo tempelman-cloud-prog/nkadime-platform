@@ -95,7 +95,7 @@ export const getUser = async (req: Request, res: Response) => {
   }
 };
 
-// Helper to upload a file buffer to GCS and return the public URL
+// Helper to upload a file buffer to GCS and return a signed URL
 async function uploadBufferToGCS(buffer: Buffer, originalname: string, mimetype: string): Promise<string> {
   const storage = new Storage({ keyFilename: keyPath });
   const bucket = storage.bucket(bucketName); // Use configurable bucket name
@@ -103,9 +103,13 @@ async function uploadBufferToGCS(buffer: Buffer, originalname: string, mimetype:
   await gcsFile.save(buffer, {
     resumable: false,
     contentType: mimetype
-    // public: true, // Removed for uniform bucket-level access
   });
-  return `https://storage.googleapis.com/${bucket.name}/${gcsFile.name}`;
+  // Generate a signed URL valid for 7 days
+  const [url] = await gcsFile.getSignedUrl({
+    action: 'read',
+    expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
+  });
+  return url;
 }
 
 // Update User Profile

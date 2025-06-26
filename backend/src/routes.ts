@@ -21,8 +21,8 @@ import {
   adminGetAllRentals, adminUpdateRentalStatus,
   adminGetAnalytics,
   sendUserMessage,
-  getReceivedMessages,
   markUserMessagesRead,
+  getReceivedMessages,
   /* getUnreadMessageCount, */
   // resolveDispute, // Removed: not exported
   // raiseDispute, // Uncomment if implemented
@@ -132,7 +132,6 @@ router.post('/messages/user', authenticateToken, sendUserMessage);
 // Fetch all received messages (listing-based and direct)
 router.get('/messages/received', authenticateToken, getReceivedMessages);
 router.post('/messages/user/:id/mark-read', authenticateToken, markUserMessagesRead);
-
 // router.post('/rentals/:rentalId/dispute', authenticateToken, raiseDispute); // Removed: raiseDispute is not implemented/exported
 // router.post('/rentals/:rentalId/dispute/resolve', authenticateToken, resolveDispute); // Removed: resolveDispute is not exported
 // router.get('/disputes/open', authenticateToken, getOpenDisputes); // Removed: getOpenDisputes is not defined

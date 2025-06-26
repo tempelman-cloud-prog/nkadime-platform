@@ -102,8 +102,8 @@ async function uploadBufferToGCS(buffer: Buffer, originalname: string, mimetype:
   const gcsFile = bucket.file(Date.now() + '-' + originalname);
   await gcsFile.save(buffer, {
     resumable: false,
-    contentType: mimetype,
-    public: true, // set to true so images are publicly accessible
+    contentType: mimetype
+    // public: true, // Removed for uniform bucket-level access
   });
   return `https://storage.googleapis.com/${bucket.name}/${gcsFile.name}`;
 }

@@ -103,7 +103,7 @@ async function uploadBufferToGCS(buffer: Buffer, originalname: string, mimetype:
   await gcsFile.save(buffer, {
     resumable: false,
     contentType: mimetype,
-    public: false, // set to true if you want public access
+    public: true, // set to true so images are publicly accessible
   });
   return `https://storage.googleapis.com/${bucket.name}/${gcsFile.name}`;
 }

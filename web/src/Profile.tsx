@@ -23,6 +23,7 @@ import 'leaflet/dist/leaflet.css';
 import Switch from '@mui/material/Switch';
 import { useSnackbar } from "./App";
 import Rating from '@mui/material/Rating';
+import redPin from './RedPinIcon';
 
 interface JwtPayload {
   userId?: string;
@@ -425,7 +426,7 @@ const Profile: React.FC = () => {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution="&copy; OpenStreetMap contributors"
                   />
-                  {mapPosition && <Marker position={mapPosition} />}
+                  {mapPosition && <Marker position={mapPosition} icon={redPin} />}
                   {isOwnProfile && editMode && (
                     <MapClickHandler setMapPosition={setMapPosition} editMode={editMode} />
                   )}
@@ -607,7 +608,7 @@ const Profile: React.FC = () => {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution="&copy; OpenStreetMap contributors"
                 />
-                {mapPosition && <Marker position={mapPosition} />}
+                {mapPosition && <Marker position={mapPosition} icon={redPin} />}
                 {/* Only allow setting marker in edit mode */}
                 {isOwnProfile && editMode && (
                   <MapClickHandler setMapPosition={setMapPosition} editMode={editMode} />

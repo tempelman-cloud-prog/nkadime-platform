@@ -9,6 +9,15 @@ import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useMessages, useConversations } from './MessagesContext';
 
+const API_BASE = process.env.REACT_APP_API_BASE || "https://nkadime-platform.onrender.com/api";
+
+// Helper to handle both relative and absolute URLs
+function getImageUrl(url: string) {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_BASE}${url}`;
+}
+
 interface Review {
   _id: string;
   reviewer: string;
@@ -464,13 +473,13 @@ const ListingDetails: React.FC = () => {
             {listing.images.map((img, idx) => (
               <img
                 key={idx}
-                src={`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`}
+                src={getImageUrl(img)}
                 alt={listing.title + ' image ' + (idx + 1)}
                 style={{ width: 220, height: 220, objectFit: 'cover', borderRadius: 16, cursor: 'pointer', boxShadow: isLoggedIn ? '0 4px 20px #455a6422' : '0 4px 20px #000a', border: '2px solid #eee', transition: 'box-shadow 0.2s' }}
                 tabIndex={0}
                 aria-label={`Preview image ${idx + 1} of ${listing.title}`}
-                onClick={() => { setLightboxImg(`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`); setLightboxOpen(true); }}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLightboxImg(`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${img}`); setLightboxOpen(true); } }}
+                onClick={() => { setLightboxImg(getImageUrl(img)); setLightboxOpen(true); }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLightboxImg(getImageUrl(img)); setLightboxOpen(true); } }}
               />
             ))}
           </div>
@@ -557,11 +566,11 @@ const ListingDetails: React.FC = () => {
                 {r.images.map((img: string, idx: number) => (
                   <img
                     key={idx}
-                    src={img.startsWith('http') ? img : `http://localhost:5000${img}`}
+                    src={getImageUrl(img)}
                     alt={`review-img-${idx}`}
                     style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', transition: 'transform 0.2s' }}
-                    onClick={() => { setLightboxImg(img.startsWith('http') ? img : `http://localhost:5000${img}`); setLightboxOpen(true); }}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLightboxImg(img.startsWith('http') ? img : `http://localhost:5000${img}`); setLightboxOpen(true); } }}
+                    onClick={() => { setLightboxImg(getImageUrl(img)); setLightboxOpen(true); }}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLightboxImg(getImageUrl(img)); setLightboxOpen(true); } }}
                   />
                 ))}
               </div>

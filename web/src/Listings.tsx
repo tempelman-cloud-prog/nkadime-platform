@@ -6,6 +6,13 @@ import Alert from '@mui/material/Alert';
 
 interface JwtPayload { userId?: string; id?: string; email?: string; }
 
+const API_BASE = process.env.REACT_APP_API_BASE || "https://nkadime-platform.onrender.com/api";
+function getImageUrl(url: string) {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_BASE}${url}`;
+}
+
 const Listings: React.FC = () => {
   const [listings, setListings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -389,7 +396,7 @@ const Listings: React.FC = () => {
             </button>
             {listing.images && listing.images.length > 0 ? (
               <img
-                src={`${process.env.REACT_APP_API_URL || "https://nkadime-platform.onrender.com"}${listing.images[0]}`}
+                src={getImageUrl(listing.images[0])}
                 alt={listing.title}
                 style={{ width: '100%', height: 190, objectFit: 'cover', borderTopLeftRadius: 18, borderTopRightRadius: 18 }}
                 aria-label={`${listing.title} image`}

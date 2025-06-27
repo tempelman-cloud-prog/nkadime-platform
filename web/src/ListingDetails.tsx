@@ -99,7 +99,7 @@ const ListingDetails: React.FC = () => {
         setReviews(revs);
         setLoading(false);
         if (id) {
-          const res = await fetch(`http://localhost:5000/api/average-rating/listing/${id}`);
+          const res = await fetch(`${API_BASE}/average-rating/listing/${id}`);
           const data = await res.json();
           setAvgRating(data.avg);
           setRatingCount(data.count);

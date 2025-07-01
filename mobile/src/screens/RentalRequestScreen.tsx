@@ -1,29 +1,44 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Button, Alert, StyleSheet, ActivityIndicator } from 'react-native';
-import { RouteProp } from '@react-navigation/native';
-import type { RootStackParamList } from './ListingDetailsScreen';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  Alert,
+  StyleSheet,
+  ActivityIndicator,
+} from "react-native";
+import { RouteProp } from "@react-navigation/native";
+import type { RootStackParamList } from "./ListingDetailsScreen";
+import { Colors } from "../constants/colors";
 
-const API_BASE = 'http://localhost:5000/api';
+import { API_BASE } from "@env";
 
-const RentalRequestScreen = ({ route, navigation }: { route: RouteProp<RootStackParamList, 'RentalRequest'>, navigation: any }) => {
+const RentalRequestScreen = ({
+  route,
+  navigation,
+}: {
+  route: RouteProp<RootStackParamList, "RentalRequest">;
+  navigation: any;
+}) => {
   const { listing } = route.params;
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [message, setMessage] = useState('');
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!startDate || !endDate) {
-      Alert.alert('Please enter both start and end dates.');
+      Alert.alert("Please enter both start and end dates.");
       return;
     }
     setLoading(true);
     try {
       // TODO: Replace with actual user info
-      const userId = 'demo-user';
+      const userId = "demo-user";
       const res = await fetch(`${API_BASE}/rentals/request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           listingId: listing._id,
           userId,
@@ -32,16 +47,16 @@ const RentalRequestScreen = ({ route, navigation }: { route: RouteProp<RootStack
           message,
         }),
       });
-      if (!res.ok) throw new Error('Failed to submit request');
+      if (!res.ok) throw new Error("Failed to submit request");
       const rental = await res.json();
-      Alert.alert('Request sent!', 'Your rental request has been submitted.');
+      Alert.alert("Request sent!", "Your rental request has been submitted.");
       // Navigate to payment screen, passing rentalId and amount
-      navigation.navigate('Payment', {
+      navigation.navigate("Payment", {
         rentalId: rental._id || rental.rentalId,
-        amount: rental.amount || listing.price
+        amount: rental.amount || listing.price,
       });
     } catch (e) {
-      Alert.alert('Error', 'Could not send request.');
+      Alert.alert("Error", "Could not send request.");
     } finally {
       setLoading(false);
     }
@@ -71,19 +86,38 @@ const RentalRequestScreen = ({ route, navigation }: { route: RouteProp<RootStack
         multiline
       />
       {loading ? (
-        <ActivityIndicator color="#FF9800" style={{ marginTop: 16 }} />
+        <ActivityIndicator color={Colors.primary} style={{ marginTop: 16 }} />
       ) : (
-        <Button title="Submit Request" color="#FF9800" onPress={handleSubmit} />
+        <Button
+          title="Submit Request"
+          color={Colors.primary}
+          onPress={handleSubmit}
+        />
       )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 12 },
+  container: {
+    flex: 1,
+    padding: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 12 },
   subtitle: { fontSize: 18, marginBottom: 16 },
-  input: { width: '100%', maxWidth: 340, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 16, backgroundColor: '#fff' },
+  input: {
+    width: "100%",
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    fontSize: 16,
+    backgroundColor: Colors.cardBackground,
+  },
 });
 
 export default RentalRequestScreen;

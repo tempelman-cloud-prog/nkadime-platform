@@ -1,23 +1,30 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+} from "react-native";
 
-const API_BASE = 'http://localhost:5000/api';
+import { API_BASE } from "@env";
 
 const ListingScreen = ({ navigation }: any) => {
   const [listings, setListings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function fetchListings() {
       setLoading(true);
-      setError('');
+      setError("");
       try {
         const res = await fetch(`${API_BASE}/listings`);
         const data = await res.json();
         setListings(data.listings || []);
-      } catch (e) {
-        setError('Failed to load listings.');
+      } catch (_e) {
+        setError("Failed to load listings.");
       } finally {
         setLoading(false);
       }
@@ -26,19 +33,20 @@ const ListingScreen = ({ navigation }: any) => {
   }, []);
 
   // Helper: format price with currency (Botswana Pula)
-  const formatPrice = (price: number) => `P${Number(price).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+  const formatPrice = (price: number) =>
+    `P${Number(price).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#FF9800" />
+        <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
   if (error) {
     return (
       <View style={styles.centered}>
-        <Text style={{ color: 'red' }}>{error}</Text>
+        <Text style={{ color: Colors.error }}>{error}</Text>
       </View>
     );
   }
@@ -46,38 +54,51 @@ const ListingScreen = ({ navigation }: any) => {
   return (
     <FlatList
       data={listings}
-      keyExtractor={item => item._id}
+      keyExtractor={(item) => item._id}
       contentContainerStyle={{ padding: 16 }}
       renderItem={({ item }) => (
         <TouchableOpacity
           style={styles.card}
-          onPress={() => navigation.navigate('ListingDetails', { id: item._id })}
+          onPress={() =>
+            navigation.navigate("ListingDetails", { id: item._id })
+          }
         >
           <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.price}>{formatPrice(item.price)} {item.priceUnit || 'per day'}</Text>
+          <Text style={styles.price}>
+            {formatPrice(item.price)} {item.priceUnit || "per day"}
+          </Text>
           <Text style={styles.location}>{item.location}</Text>
         </TouchableOpacity>
       )}
-      ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 32 }}>No listings found.</Text>}
+      ListEmptyComponent={
+        <Text style={{ textAlign: "center", marginTop: 32 }}>
+          No listings found.
+        </Text>
+      }
     />
   );
 };
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.cardBackground,
     borderRadius: 12,
     padding: 18,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: Colors.textDark,
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 2,
   },
-  title: { fontSize: 20, fontWeight: 'bold', marginBottom: 4, color: '#0a2342' },
-  price: { fontSize: 18, color: '#FF9800', marginBottom: 2 },
-  location: { fontSize: 15, color: '#333' },
+  title: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 4,
+    color: Colors.textPrimary,
+  },
+  price: { fontSize: 18, color: Colors.primary, marginBottom: 2 },
+  location: { fontSize: 15, color: Colors.textSecondary },
 });
 
 export default ListingScreen;

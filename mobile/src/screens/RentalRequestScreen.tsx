@@ -11,8 +11,7 @@ import {
 import { RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "./ListingDetailsScreen";
 import { Colors } from "../constants/colors";
-
-import { API_BASE } from "@env";
+import { API_BASE } from "../api";
 
 const RentalRequestScreen = ({
   route,

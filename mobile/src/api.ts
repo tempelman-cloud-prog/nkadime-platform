@@ -1,5 +1,13 @@
+import { URLSearchParams } from 'url';
+
 // Remove @env import and use a fallback API_BASE for mobile
-const API_BASE = process.env.API_BASE || "https://nkadime-platform.onrender.com/api";
+export const API_BASE = process.env.API_BASE || "https://nkadime-platform.onrender.com/api";
+
+export async function getListings(params: Record<string, any>) {
+  const query = new URLSearchParams(params).toString();
+  const res = await fetch(`${API_BASE}/listings?${query}`);
+  return res.json();
+}
 
 export async function getRentalHistory(userId: string) {
   // const token = await AsyncStorage.getItem("token");

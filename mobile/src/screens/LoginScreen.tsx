@@ -8,8 +8,8 @@ import {
   Alert,
   TouchableOpacity,
 } from "react-native";
-
-import { API_BASE } from "@env";
+import { Colors } from "../constants/colors";
+import { API_BASE } from "../api";
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState("");

@@ -14,8 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import type { RootStackParamList } from "./ListingDetailsScreen";
 import { Colors } from "../constants/colors";
-
-import { API_BASE } from "@env";
+import { API_BASE } from "../api";
 
 const MessagingScreen = ({ route }: any) => {
   const { listing } = route?.params || {};
@@ -56,7 +55,7 @@ const MessagingScreen = ({ route }: any) => {
         setMessages(Array.isArray(data) ? data : data.messages || []);
       } catch (_e: any) {
         setMessages([]);
-        setError(e?.message || "Could not load messages.");
+        setError(_e?.message || "Could not load messages.");
       } finally {
         setLoading(false);
       }

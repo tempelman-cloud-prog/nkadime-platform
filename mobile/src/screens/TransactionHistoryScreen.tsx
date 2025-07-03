@@ -10,8 +10,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import { Colors } from "../constants/colors";
-
-import { API_BASE } from "@env";
+import { API_BASE } from "../api";
 
 const TransactionHistoryScreen = () => {
   const [transactions, setTransactions] = useState<any[]>([]);

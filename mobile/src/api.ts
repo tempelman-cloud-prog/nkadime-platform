@@ -1,7 +1,7 @@
 // Remove @env import and use a fallback API_BASE for mobile
 // import { URLSearchParams } from 'url';
 
-export const API_BASE = process.env.API_BASE || "https://nkadime-platform.onrender.com/api";
+export const API_BASE = "https://nkadime-platform.onrender.com/api";
 
 export async function getListings(params: Record<string, any>) {
   const query = new URLSearchParams(params).toString();

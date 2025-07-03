@@ -30,7 +30,7 @@ export type RootStackParamList = {
 };
 
 // Remove @env import and use a fallback API_BASE for mobile
-const API_BASE = process.env.API_BASE || "https://nkadime-platform.onrender.com/api";
+const API_BASE = "https://nkadime-platform.onrender.com/api";
 
 const ListingDetailsScreen = ({
   route,

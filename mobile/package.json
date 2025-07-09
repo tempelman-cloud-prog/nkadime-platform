@@ -2,7 +2,6 @@
   "name": "nkadime-mobile",
   "version": "1.0.0",
   "description": "Mobile application for the Nkadime peer-to-peer equipment rental platform.",
-  "main": "src/index.ts",
   "scripts": {
     "start": "react-native start",
     "android": "react-native run-android",
@@ -13,16 +12,16 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-picker/picker": "^2.11.1",
+    "@react-navigation/native": "^7.1.14",
     "@react-navigation/stack": "^7.4.2",
     "@types/react-native": "^0.72.8",
     "axios": "^0.21.1",
-    "expo": "^53.0.15",
+    "expo": "^53.0.17",
     "jwt-decode": "^4.0.0",
     "react": "^19.0.0",
     "react-native": "^0.79.4",
-    "react-native-dotenv": "^3.4.11",
     "react-native-image-picker": "^8.2.1",
-    "react-navigation": "^4.4.4"
+    "react-native-safe-area-context": "^5.5.1"
   },
   "devDependencies": {
     "@babel/core": "^7.12.3",

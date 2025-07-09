@@ -3,6 +3,6 @@
     "name": "NkadimeMobile",
     "slug": "nkadime-mobile",
     "version": "1.0.0",
-    "jsEngine": "jsc"
+    "jsEngine": "hermes"
   }
 }

@@ -2,6 +2,7 @@
   "name": "nkadime-mobile",
   "version": "1.0.0",
   "description": "Mobile application for the Nkadime peer-to-peer equipment rental platform.",
+  "main": "src/index.ts",
   "scripts": {
     "start": "react-native start",
     "android": "react-native run-android",
